@@ -1,0 +1,1359 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  serverTimestamp,
+  query,
+  orderBy,
+  where,
+  writeBatch
+} from 'firebase/firestore';
+import { auth, db, googleProvider } from './firebase';
+import { scorePrediction } from './scoring';
+import './styles.css';
+
+const TIME_ZONE = 'America/Chicago';
+const TIME_ZONE_LABEL = 'CT';
+const LOCK_MINUTES_BEFORE_KICKOFF = 0;
+
+function formatCentralDate(iso) {
+  if (!iso) return 'Date not set';
+
+  return new Date(iso).toLocaleDateString('en-US', {
+    timeZone: TIME_ZONE,
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric'
+  });
+}
+
+function formatCentralDateTime(iso) {
+  if (!iso) return 'Date not set';
+
+  return new Date(iso).toLocaleString('en-US', {
+    timeZone: TIME_ZONE,
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+}
+
+function toLocalInputValue(iso) {
+  if (!iso) return '';
+
+  const date = new Date(iso);
+
+  if (Number.isNaN(date.getTime())) return '';
+
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 16);
+}
+
+function formatCountdown(ms) {
+  if (ms <= 0) return 'Prediction Closed';
+
+  const totalSeconds = Math.floor(ms / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+
+  return `${minutes}m ${seconds}s`;
+}
+
+
+
+function App() {
+  const [worldCupSettings, setWorldCupSettings] = useState(null);
+  const [authUser, setAuthUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [matches, setMatches] = useState([]);
+  const [myPredictions, setMyPredictions] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [tab, setTab] = useState('matches');
+
+  useEffect(() => {
+    return onAuthStateChanged(auth, async user => {
+      setAuthUser(user);
+
+      if (!user) {
+        setProfile(null);
+        setIsAdmin(false);
+        setMyPredictions([]);
+        return;
+      }
+
+      const userRef = doc(db, 'users', user.uid);
+      const userSnap = await getDoc(userRef);
+
+      if (!userSnap.exists()) {
+        await setDoc(userRef, {
+          name: user.displayName || '',
+          place: '',
+          photoURL: user.photoURL || '',
+          email: user.email || '',
+          totalPoints: 0,
+          exactScores: 0,
+          createdAt: serverTimestamp()
+        });
+      }
+
+      const adminSnap = await getDoc(doc(db, 'admins', user.uid));
+      setIsAdmin(adminSnap.exists());
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!authUser) return;
+
+    const unsubProfile = onSnapshot(doc(db, 'users', authUser.uid), snap => {
+      setProfile({ id: snap.id, ...snap.data() });
+    });
+
+    const unsubMatches = onSnapshot(
+      query(collection(db, 'matches'), orderBy('kickoff', 'asc')),
+      snap => {
+        setMatches(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      }
+    );
+    
+    const unsubSettings = onSnapshot(doc(db, 'settings', 'worldCup'), snap => {
+      setWorldCupSettings(snap.exists() ? snap.data() : null);
+    });
+
+    // Important optimization: users only load their own predictions.
+    const unsubPredictions = onSnapshot(
+      query(collection(db, 'predictions'), where('uid', '==', authUser.uid)),
+      snap => {
+        setMyPredictions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      }
+    );
+
+    // Leaderboard is now based on stored totals in users/{uid}, not all predictions.
+    const unsubUsers = onSnapshot(collection(db, 'users'), snap => {
+      setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    return () => {
+      unsubProfile();
+      unsubMatches();
+      unsubPredictions();
+      unsubUsers();
+      unsubSettings();
+    };
+  }, [authUser]);
+
+  const leaderboard = useMemo(() => {
+    return users
+      .filter(user => user.approved)
+      .map(user => ({
+        ...user,
+        points: Number(user.totalPoints || 0),
+        exact: Number(user.exactScores || 0)
+      }))
+      .sort(
+        (a, b) =>
+          b.points - a.points ||
+          b.exact - a.exact ||
+          (a.name || '').localeCompare(b.name || '')
+      );
+  }, [users]);
+
+  if (!authUser) return <Login />;
+
+  if (!profile) {
+    return (
+      <main className="app">
+        <section className="card">
+          <h2>Loading...</h2>
+        </section>
+      </main>
+    );
+  }
+
+  if (!profile.approved && !isAdmin) {
+    return <PendingApproval />;
+  }
+
+  return (
+    <main className="app">
+      <header className="hero">
+        <div>
+          <p className="eyebrow">World Cup 2026</p>
+          <h1>Predict & climb</h1>
+
+          <p className="timezone">
+            🕒 All match times are displayed in Central Time ({TIME_ZONE_LABEL}).
+            Predictions lock at kickoff.
+          </p>
+        </div>
+
+        <div className="logoutWrapper">
+          <button
+            className="iconBtn"
+            onClick={() => signOut(auth)}
+            title="Sign out"
+          >
+            ↗
+          </button>
+
+          <span className="logoutLabel">Logout</span>
+        </div>
+      </header>
+
+      <nav className="tabs">
+        <button
+          className={tab === 'matches' ? 'active' : ''}
+          onClick={() => setTab('matches')}
+        >
+          🏆 Matches
+        </button>
+
+        <button
+          className={tab === 'leaderboard' ? 'active' : ''}
+          onClick={() => setTab('leaderboard')}
+        >
+          🥇 Board
+        </button>
+
+        <button
+          className={tab === 'rules' ? 'active' : ''}
+          onClick={() => setTab('rules')}
+        >
+          📜 Rules
+        </button>
+
+        <button
+          className={tab === 'profile' ? 'active' : ''}
+          onClick={() => setTab('profile')}
+        >
+          👤 Profile
+        </button>
+
+        {isAdmin && (
+          <button
+            className={tab === 'admin' ? 'active' : ''}
+            onClick={() => setTab('admin')}
+          >
+            🛡 Admin
+          </button>
+        )}
+      </nav>
+
+      {tab === 'matches' && (
+        <Matches
+          matches={matches}
+          predictions={myPredictions}
+          uid={authUser.uid}
+          profile={profile}
+        />
+      )}
+
+
+      {tab === 'leaderboard' && <Leaderboard rows={leaderboard} />}
+
+      {tab === 'rules' && <Rules />}
+
+      {tab === 'profile' && <Profile profile={profile} uid={authUser.uid} />}
+
+      {tab === 'admin' && isAdmin && (
+          <Admin matches={matches} users={users} worldCupSettings={worldCupSettings} />
+        )}
+    </main>
+  );
+}
+
+function Login() {
+  return (
+    <main className="login">
+      <section className="loginCard">
+        <div className="ball">⚽</div>
+
+        <p className="eyebrow">FIFA World Cup 2026</p>
+
+        <h1>Score predictions with friends</h1>
+
+        <p className="muted">
+          Sign in once with Gmail. Your browser keeps you logged in for a
+          long-lasting, low-friction experience.
+        </p>
+
+        <button
+          className="primary"
+          onClick={() => signInWithPopup(auth, googleProvider)}
+        >
+          Continue with Google
+        </button>
+      </section>
+    </main>
+  );
+}
+
+function PendingApproval() {
+  return (
+    <main className="login">
+      <section className="loginCard">
+        <div className="ball">⚽</div>
+
+        <p className="eyebrow">World Cup 2026</p>
+
+        <h1>Approval Required</h1>
+
+        <p className="muted">
+          Your account has been created successfully.
+        </p>
+
+        <p className="muted">
+          Please pay the <b>$50 entry fee</b>. After payment, an admin will approve your account and you can access the prediction portal.
+        </p>
+
+        <button className="primary" onClick={() => signOut(auth)}>
+          Logout
+        </button>
+      </section>
+    </main>
+  );
+}
+
+function Matches({ matches, predictions, uid, profile }) {
+  const grouped = matches.reduce((acc, match) => {
+    const day = formatCentralDate(match.kickoff);
+    (acc[day] ||= []).push(match);
+    return acc;
+  }, {});
+
+  const jumpToCurrentMatchDay = () => {
+    const now = Date.now();
+
+    const upcomingMatch =
+      matches.find(match => new Date(match.kickoff).getTime() >= now) ||
+      matches[matches.length - 1];
+
+    if (!upcomingMatch) return;
+
+    const dayId = `day-${formatCentralDate(upcomingMatch.kickoff)
+      .replaceAll(' ', '-')
+      .replaceAll(',', '')}`;
+
+    document.getElementById(dayId)?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    });
+  };
+
+  return (
+    <section>
+      <ChampionPick matches={matches} uid={uid} profile={profile} />
+      {matches.length > 0 && (
+        <button className="jumpButton" onClick={jumpToCurrentMatchDay}>
+          Next match ↓
+        </button>
+      )}
+
+      {Object.entries(grouped).map(([day, list]) => {
+        const dayId = `day-${day.replaceAll(' ', '-').replaceAll(',', '')}`;
+
+        return (
+          <div key={day} id={dayId}>
+            <h2 className="day">📅 {day}</h2>
+
+            {list.map(match => (
+              <MatchCard
+                key={match.id}
+                match={match}
+                prediction={predictions.find(
+                  p => p.uid === uid && p.matchId === match.id
+                )}
+                uid={uid}
+              />
+            ))}
+          </div>
+        );
+      })}
+
+      {matches.length === 0 && (
+        <Empty text="No matches yet. Ask an admin to add fixtures." />
+      )}
+    </section>
+  );
+}
+
+function ChampionPick({ matches, uid, profile }) {
+  const [team, setTeam] = useState(profile?.championPick || '');
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setTeam(profile?.championPick || '');
+  }, [profile?.championPick]);
+
+  const teams = Array.from(
+    new Set(
+      matches
+        .flatMap(match => [match.homeTeam, match.awayTeam])
+        .filter(Boolean)
+    )
+  ).sort();
+
+  const firstKickoff = matches.length
+    ? Math.min(...matches.map(match => new Date(match.kickoff).getTime()))
+    : null;
+
+  const locked = firstKickoff ? Date.now() >= firstKickoff : false;
+
+  async function saveChampionPick() {
+    if (locked) return alert('Champion pick is locked after the first kickoff.');
+    if (!team) return alert('Please select a team.');
+
+    await setDoc(
+      doc(db, 'users', uid),
+      {
+        championPick: team,
+        championPickUpdatedAt: serverTimestamp()
+      },
+      { merge: true }
+    );
+
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  }
+
+  return (
+    <article className="card">
+      <h2>🏆 World Cup Winner Pick</h2>
+
+      <p className="muted">
+        Pick your World Cup winner. You can change it until the first match kicks off.
+        Correct pick earns 10 bonus points.
+      </p>
+
+      <label>
+        Your champion
+        <select
+          value={team}
+          disabled={locked}
+          onChange={e => setTeam(e.target.value)}
+        >
+          <option value="">Select team</option>
+          {teams.map(teamName => (
+            <option key={teamName} value={teamName}>
+              {teamName}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {locked && <p className="countdownBanner closed">🔒 Champion pick locked</p>}
+      {saved && <p className="success">✅ Champion pick saved</p>}
+
+      <button
+        className="primary"
+        onClick={saveChampionPick}
+        disabled={locked || !team}
+      >
+        Save Champion Pick
+      </button>
+    </article>
+  );
+}
+
+function ChampionAdmin({ matches, worldCupSettings }) {
+  const [winner, setWinner] = useState(worldCupSettings?.championTeam || '');
+  const [saved, setSaved] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setWinner(worldCupSettings?.championTeam || '');
+  }, [worldCupSettings?.championTeam]);
+
+  const teams = Array.from(
+    new Set(
+      matches
+        .flatMap(match => [match.homeTeam, match.awayTeam])
+        .filter(Boolean)
+    )
+  ).sort();
+
+  async function publishChampion() {
+    if (!winner) return alert('Please select the World Cup winner.');
+
+    setBusy(true);
+
+    try {
+      await setDoc(
+        doc(db, 'settings', 'worldCup'),
+        {
+          championTeam: winner,
+          championPublished: true,
+          championPublishedAt: serverTimestamp()
+        },
+        { merge: true }
+      );
+
+      await recalculateLeaderboard();
+
+      setSaved('✅ Champion published and leaderboard updated');
+      setTimeout(() => setSaved(''), 3000);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <article className="card">
+      <h2>🏆 Publish World Cup Winner</h2>
+
+      <label>
+        Winning team
+        <select
+          value={winner}
+          onChange={e => setWinner(e.target.value)}
+        >
+          <option value="">Select winner</option>
+          {teams.map(teamName => (
+            <option key={teamName} value={teamName}>
+              {teamName}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {saved && <p className="success">{saved}</p>}
+
+      <button className="primary" onClick={publishChampion} disabled={busy || !winner}>
+        {busy ? 'Updating...' : 'Publish Champion'}
+      </button>
+    </article>
+  );
+}
+
+function MatchCard({ match, prediction, uid }) {
+  const lockTime =
+    new Date(match.kickoff).getTime() -
+    LOCK_MINUTES_BEFORE_KICKOFF * 60 * 1000;
+
+  const [now, setNow] = useState(Date.now());
+  const locked = now >= lockTime;
+  const countdownText = formatCountdown(lockTime - now);
+
+  const [homeGoals, setHomeGoals] = useState(prediction?.homeGoals ?? '');
+  const [awayGoals, setAwayGoals] = useState(prediction?.awayGoals ?? '');
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    setHomeGoals(prediction?.homeGoals ?? '');
+    setAwayGoals(prediction?.awayGoals ?? '');
+  }, [prediction?.homeGoals, prediction?.awayGoals]);
+
+  async function save() {
+    if (locked) {
+      return alert('Predictions are locked for this match.');
+    }
+
+    await setDoc(
+      doc(db, 'predictions', `${uid}_${match.id}`),
+      {
+        uid,
+        matchId: match.id,
+        homeGoals: Number(homeGoals),
+        awayGoals: Number(awayGoals),
+        updatedAt: serverTimestamp()
+      },
+      { merge: true }
+    );
+
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  }
+
+  return (
+    <article className="card match">
+      <div className="matchTop">
+        <span>
+          {formatCentralDateTime(match.kickoff)} {TIME_ZONE_LABEL}
+        </span>
+
+        <span className={locked ? 'pill locked' : 'pill'}>
+          {locked ? 'Locked' : 'Open'}
+        </span>
+      </div>
+
+      <div className="teams">
+        <strong>{match.homeTeam}</strong>
+
+        <input
+          type="number"
+          min="0"
+          value={homeGoals}
+          disabled={locked}
+          onChange={e => setHomeGoals(e.target.value)}
+        />
+
+        <span>vs</span>
+
+        <input
+          type="number"
+          min="0"
+          value={awayGoals}
+          disabled={locked}
+          onChange={e => setAwayGoals(e.target.value)}
+        />
+
+        <strong>{match.awayTeam}</strong>
+      </div>
+
+      <div className={locked ? 'countdownBanner closed' : 'countdownBanner'}>
+        <span className="countdownLabel">
+          {locked ? 'Prediction Closed' : 'Prediction closes in'}
+        </span>
+
+        {!locked && <span className="countdownValue">{countdownText}</span>}
+      </div>
+
+      {match.resultPublished && (
+        <p className="result">
+          Result: {match.homeGoals} - {match.awayGoals} · You earned{' '}
+          {prediction ? scorePrediction(prediction, match) : 0} pts
+        </p>
+      )}
+
+      {saved && <p className="success">✅ Prediction saved</p>}
+
+      <div className="predictionAction">
+        <button
+          className="secondary predictionButton"
+          onClick={save}
+          disabled={locked || homeGoals === '' || awayGoals === ''}
+        >
+          {prediction ? 'Update My Prediction' : 'Save My Prediction'}
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function Leaderboard({ rows }) {
+  return (
+    <section className="card">
+      <h2>Leaderboard</h2>
+
+      {rows.map((row, index) => (
+        <div className="rank" key={row.id}>
+        <img
+          src={
+            row.photoURL ||
+            'https://ui-avatars.com/api/?name=' +
+              encodeURIComponent(row.name || 'Player')
+          }
+          alt={row.name || 'Player'}
+          className="leaderboardAvatar"
+        />
+
+          <div>
+            <strong>
+              #{index + 1} {row.name || 'Player'}
+            </strong>
+            <p>
+              {row.place || 'No place'} · {row.exact} exact scores
+            </p>
+          </div>
+
+          <b>{row.points} pts</b>
+        </div>
+      ))}
+
+      {rows.length === 0 && <Empty text="No players yet." />}
+    </section>
+  );
+}
+
+function Rules() {
+  return (
+    <section className="card">
+      <h2>📜 Tournament Rules</h2>
+
+      <div className="rulesList">
+        <div className="ruleItem">
+          <strong>⚽ Match Prediction</strong>
+          <p>
+            Predict the score for every World Cup match before kickoff.
+          </p>
+        </div>
+
+        <div className="ruleItem">
+          <strong>🎯 Exact Score</strong>
+          <p>
+            Correct scoreline earns <b>4 points</b>.
+          </p>
+        </div>
+
+        <div className="ruleItem">
+          <strong>🏆 Correct Result</strong>
+          <p>
+            Correct winner or draw earns <b>2 points</b>.
+          </p>
+        </div>
+
+        <div className="ruleItem">
+          <strong>❌ Incorrect Result</strong>
+          <p>
+            Wrong prediction earns <b>0 points</b>.
+          </p>
+        </div>
+
+        <div className="ruleItem">
+          <strong>🌎 World Cup Champion Pick</strong>
+          <p>
+            Select your World Cup winner before the first match begins.
+          </p>
+        </div>
+
+        <div className="ruleItem">
+          <strong>🥇 Champion Bonus</strong>
+          <p>
+            Correct World Cup winner earns <b>10 bonus points</b>.
+          </p>
+        </div>
+
+        <div className="ruleItem">
+          <strong>🔒 Prediction Lock</strong>
+          <p>
+            Match predictions lock at kickoff time.
+          </p>
+        </div>
+
+        <div className="ruleItem">
+          <strong>🕒 Time Zone</strong>
+          <p>
+            All match times are displayed in Central Time (CT).
+          </p>
+        </div>
+
+        <div className="ruleItem">
+          <strong>📊 Leaderboard Ranking</strong>
+          <p>
+            Players are ranked by total points. Exact score count is used as a tiebreaker.
+          </p>
+        </div>
+
+        <div className="ruleItem">
+          <strong>💰 Entry Fee & Prize Pool</strong>
+
+          <p>
+            Entry fee is <b>$50 per participant</b>.
+          </p>
+
+          <p>
+            The total prize pool is distributed among the top 5 players:
+          </p>
+
+          <ul className="prizeList">
+            <li>🥇 1st Place → 45%</li>
+            <li>🥈 2nd Place → 25%</li>
+            <li>🥉 3rd Place → 15%</li>
+            <li>🏅 4th Place → 10%</li>
+            <li>🎖️ 5th Place → 5%</li>
+          </ul>
+
+          <p>
+            If two or more players tie for a position, the prize amount for those
+            positions will be distributed equally among the tied players.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Profile({ profile, uid }) {
+  const [form, setForm] = useState({
+      name: '',
+      place: ''
+    });
+
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (!profile) return;
+
+    setForm({
+      name: profile.name || '',
+      place: profile.place || ''
+    });
+  }, [profile]);
+
+  async function save() {
+    await setDoc(doc(db, 'users', uid), form, { merge: true });
+
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  }
+
+  return (
+    <section className="card">
+      <div className="profileHeader">
+        <img
+          src={profile?.photoURL}
+          alt={profile?.name}
+          className="profileAvatar"
+        />
+
+        <div>
+          <h2>{profile?.name || 'Player'}</h2>
+          <p className="muted">{profile?.email}</p>
+        </div>
+      </div>
+      <h2>Your profile</h2>
+
+      <label>
+        Name
+        <input
+          value={form.name}
+          onChange={e => setForm({ ...form, name: e.target.value })}
+        />
+      </label>
+
+      <label>
+        place
+        <input
+          value={form.place}
+          onChange={e => setForm({ ...form, place: e.target.value })}
+        />
+      </label>
+
+      
+      {saved && <p className="success">✅ Profile saved</p>}
+
+      <button className="primary" onClick={save}>
+        Save profile
+      </button>
+    </section>
+  );
+}
+
+function UserApprovals({ users }) {
+  const pendingUsers = users.filter(user => user.approved !== true);
+  const approvedUsers = users.filter(user => user.approved === true); 
+  // const pendingUsers = users.filter(user => !user.approved);
+
+  async function setApproval(userId, approved) {
+    await setDoc(
+      doc(db, 'users', userId),
+      {
+        approved,
+        approvedAt: approved ? serverTimestamp() : null
+      },
+      { merge: true }
+    );
+  }
+
+  return (
+    <article className="card">
+    <h2>👥 User Approvals</h2>
+
+    <h3>⏳ Pending Approval</h3>
+
+    {pendingUsers.length === 0 && (
+      <p className="muted">No pending users.</p>
+    )}
+
+    {pendingUsers.map(user => (
+      <div className="approvalRow" key={user.id}>
+        <div>
+          <strong>{user.name || 'Unknown User'}</strong>
+          <p className="muted">{user.email}</p>
+        </div>
+
+        <div className="approvalActions">
+          <button
+            className="secondary"
+            onClick={() => setApproval(user.id, true)}
+          >
+            Approve
+          </button>
+        </div>
+      </div>
+    ))}
+
+    <h3 style={{ marginTop: '24px' }}>✅ Approved Users</h3>
+
+    {approvedUsers.length === 0 && (
+      <p className="muted">No approved users.</p>
+    )}
+
+    {approvedUsers.map(user => (
+      <div className="approvalRow" key={user.id}>
+        <div>
+          <strong>{user.name || 'Unknown User'}</strong>
+          <p className="muted">{user.email}</p>
+        </div>
+
+        <div className="approvalActions">
+          <button
+            className="danger"
+            onClick={() => setApproval(user.id, false)}
+          >
+            Remove Access
+          </button>
+        </div>
+      </div>
+    ))}
+  </article>
+  );
+}
+
+function Admin({ matches, users, worldCupSettings }) {
+  const [adminTab, setAdminTab] = useState('create');
+  const nextMatchNumber = matches.length + 1;
+  const [search, setSearch] = useState('');
+  const [match, setMatch] = useState({
+    id: '',
+    homeTeam: '',
+    awayTeam: '',
+    kickoff: '',
+    round: ''
+  });
+
+  const [leaderboardSaved, setLeaderboardSaved] = useState('');
+  const [leaderboardBusy, setLeaderboardBusy] = useState(false);
+  const [saved, setSaved] = useState('');
+
+  async function createMatch() {
+    if (!match.id || !match.homeTeam || !match.awayTeam || !match.kickoff) {
+      return alert('Please fill match ID, teams, and kickoff.');
+    }
+
+    await setDoc(doc(db, 'matches', match.id), {
+      homeTeam: match.homeTeam.trim(),
+      awayTeam: match.awayTeam.trim(),
+      round: match.round.trim(),
+      kickoff: new Date(match.kickoff).toISOString(),
+      resultPublished: false,
+      createdAt: serverTimestamp()
+    });
+
+    setSaved(`✅ ${match.homeTeam} vs ${match.awayTeam} added`);
+    setMatch({
+      id: '',
+      homeTeam: '',
+      awayTeam: '',
+      kickoff: '',
+      round: ''
+    });
+
+    setTimeout(() => setSaved(''), 2500);
+  }
+
+  async function updateLeaderboardNow() {
+    setLeaderboardBusy(true);
+
+    try {
+      await recalculateLeaderboard();
+
+      setLeaderboardSaved('✅ Leaderboard updated');
+      setTimeout(() => setLeaderboardSaved(''), 3000);
+    } finally {
+      setLeaderboardBusy(false);
+    }
+  }
+
+  const filteredMatches = matches.filter(match => {
+  const text = `${match.homeTeam} ${match.awayTeam} ${match.round}`.toLowerCase();
+  return text.includes(search.toLowerCase());
+  });
+  return (
+    <section>
+      <nav className="adminTabs">
+        <button className={adminTab === 'create' ? 'active' : ''} onClick={() => setAdminTab('create')}>
+          ➕ Create
+        </button>
+
+        <button className={adminTab === 'results' ? 'active' : ''} onClick={() => setAdminTab('results')}>
+          ⚽ Results
+        </button>
+
+        <button className={adminTab === 'users' ? 'active' : ''} onClick={() => setAdminTab('users')}>
+          👥 Users
+        </button>
+
+        <button className={adminTab === 'leaderboard' ? 'active' : ''} onClick={() => setAdminTab('leaderboard')}>
+          📊 Board
+        </button>
+
+        <button className={adminTab === 'champion' ? 'active' : ''} onClick={() => setAdminTab('champion')}>
+          🏆 Winner
+        </button>
+      </nav>
+      {adminTab === 'create' && (
+        <article className="card">
+          <h2>Create match</h2>
+
+          <label>
+            Match ID
+            <input
+              placeholder={`match${String(nextMatchNumber).padStart(3, '0')}`}
+              value={match.id}
+              onChange={e => setMatch({ ...match, id: e.target.value })}
+            />
+          </label>
+
+          <label>
+            Round
+            <input
+              placeholder="Group A"
+              value={match.round}
+              onChange={e => setMatch({ ...match, round: e.target.value })}
+            />
+          </label>
+
+          <label>
+            Home team
+            <input
+              value={match.homeTeam}
+              onChange={e => setMatch({ ...match, homeTeam: e.target.value })}
+            />
+          </label>
+
+          <label>
+            Away team
+            <input
+              value={match.awayTeam}
+              onChange={e => setMatch({ ...match, awayTeam: e.target.value })}
+            />
+          </label>
+
+          <label>
+            Kickoff
+            <input
+              type="datetime-local"
+              value={match.kickoff}
+              onChange={e => setMatch({ ...match, kickoff: e.target.value })}
+            />
+          </label>
+
+          {saved && <p className="success">{saved}</p>}
+
+          <button className="primary" onClick={createMatch}>
+            ＋ Add match
+          </button>
+        </article>
+      )}
+      {adminTab === 'leaderboard' && (
+        <article className="card">
+          <h2>📊 Leaderboard</h2>
+
+          <p className="muted">
+            Recalculate all match points, exact score counts, and champion bonus points.
+          </p>
+
+          {leaderboardSaved && <p className="success">{leaderboardSaved}</p>}
+
+          <button
+            className="primary"
+            onClick={updateLeaderboardNow}
+            disabled={leaderboardBusy}
+          >
+            {leaderboardBusy ? 'Updating leaderboard...' : 'Update Leaderboard'}
+          </button>
+        </article>
+      )}
+      {adminTab === 'champion' && (
+        <ChampionAdmin matches={matches} worldCupSettings={worldCupSettings} />
+      )}
+
+      {adminTab === 'users' && (
+        <UserApprovals users={users} />
+      )}
+
+      {adminTab === 'results' && (
+      <>
+      <article className="card">
+        <label>
+          Search matches
+          <input
+            placeholder="Search Argentina, Group A, Brazil..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </label>
+      </article>
+      <h2 className="day">Publish results</h2>
+
+      {filteredMatches.map((match, index) => (
+        <AdminResult
+          key={match.id}
+          match={match}
+          displayNumber={index + 1}
+        />
+      ))}
+      </>
+    )}
+    </section>
+  );
+}
+
+async function recalculateLeaderboard() {
+  const settingsSnap = await getDoc(doc(db, 'settings', 'worldCup'));
+  const settings = settingsSnap.exists() ? settingsSnap.data() : null;
+  const championTeam = settings?.championPublished ? settings.championTeam : '';
+
+  const predictionsSnap = await getDocs(collection(db, 'predictions'));
+  const usersSnap = await getDocs(collection(db, 'users'));
+  const matchesSnap = await getDocs(collection(db, 'matches'));
+
+  const allMatches = matchesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const allPredictions = predictionsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  const batch = writeBatch(db);
+
+  allUsers.forEach(user => {
+    const userPredictions = allPredictions.filter(p => p.uid === user.id);
+
+    const totalPoints = userPredictions.reduce((sum, prediction) => {
+      const predictionMatch = allMatches.find(m => m.id === prediction.matchId);
+      return sum + scorePrediction(prediction, predictionMatch);
+    }, 0);
+
+    const exactScores = userPredictions.filter(prediction => {
+      const predictionMatch = allMatches.find(m => m.id === prediction.matchId);
+      return scorePrediction(prediction, predictionMatch) === 4;
+    }).length;
+
+    const championBonusPoints =
+      championTeam && user.championPick === championTeam ? 10 : 0;
+
+    batch.set(
+      doc(db, 'users', user.id),
+      {
+        totalPoints: totalPoints + championBonusPoints,
+        matchPoints: totalPoints,
+        championBonusPoints,
+        exactScores,
+        leaderboardUpdatedAt: serverTimestamp()
+      },
+      { merge: true }
+    );
+  });
+
+  await batch.commit();
+}
+
+function AdminResult({ match, displayNumber }) {
+  const [editing, setEditing] = useState(false);
+  const [homeTeam, setHomeTeam] = useState(match.homeTeam ?? '');
+  const [awayTeam, setAwayTeam] = useState(match.awayTeam ?? '');
+  const [round, setRound] = useState(match.round ?? '');
+  const [kickoff, setKickoff] = useState(toLocalInputValue(match.kickoff));
+  const [homeGoals, setHomeGoals] = useState(match.homeGoals ?? '');
+  const [awayGoals, setAwayGoals] = useState(match.awayGoals ?? '');
+  const [saved, setSaved] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setHomeTeam(match.homeTeam ?? '');
+    setAwayTeam(match.awayTeam ?? '');
+    setRound(match.round ?? '');
+    setKickoff(toLocalInputValue(match.kickoff));
+    setHomeGoals(match.homeGoals ?? '');
+    setAwayGoals(match.awayGoals ?? '');
+  }, [match]);
+
+  async function saveMatchDetails() {
+    if (!homeTeam || !awayTeam || !kickoff) {
+      return alert('Please fill home team, away team, and kickoff.');
+    }
+
+    await updateDoc(doc(db, 'matches', match.id), {
+      homeTeam: homeTeam.trim(),
+      awayTeam: awayTeam.trim(),
+      round: round.trim(),
+      kickoff: new Date(kickoff).toISOString(),
+      updatedAt: serverTimestamp()
+    });
+
+    setEditing(false);
+    setSaved('✅ Match updated');
+    setTimeout(() => setSaved(''), 2500);
+  }
+
+  async function publish() {
+    if (homeGoals === '' || awayGoals === '') {
+      return alert('Please enter both final scores.');
+    }
+
+    setBusy(true);
+
+    try {
+      await updateDoc(doc(db, 'matches', match.id), {
+        homeGoals: Number(homeGoals),
+        awayGoals: Number(awayGoals),
+        resultPublished: true,
+        updatedAt: serverTimestamp()
+      });
+
+      await recalculateLeaderboard();
+
+      setSaved('✅ Result published and leaderboard updated');
+      setTimeout(() => setSaved(''), 3000);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unpublish() {
+    setBusy(true);
+
+    try {
+      await updateDoc(doc(db, 'matches', match.id), {
+        resultPublished: false,
+        updatedAt: serverTimestamp()
+      });
+
+      await recalculateLeaderboard();
+
+      setSaved('↩️ Result unpublished and leaderboard updated');
+      setTimeout(() => setSaved(''), 3000);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeMatch() {
+    if (!confirm(`Delete ${match.homeTeam} vs ${match.awayTeam}?`)) return;
+
+    await deleteDoc(doc(db, 'matches', match.id));
+    await recalculateLeaderboard();
+  }
+
+  return (
+    <article className="card compact">
+      {!editing ? (
+        <>
+          <div className="adminMatchHeader">
+            <div className="adminMatchHeader">
+              <strong>Match #{displayNumber}</strong>
+              <span className="matchBadge">{match.round || 'Match'}</span>
+            </div>
+
+            <p className="adminTeams">
+              {match.homeTeam} vs {match.awayTeam}
+            </p>
+
+            <span className="matchBadge">
+              {match.round || 'Group Stage'}
+            </span>
+          </div>
+
+          <p className="muted">
+            {match.round || 'No round'} · {formatCentralDateTime(match.kickoff)}{' '}
+            {TIME_ZONE_LABEL}
+          </p>
+
+          <button className="secondary" onClick={() => setEditing(true)}>
+            Edit match
+          </button>
+        </>
+      ) : (
+        <>
+          <label>
+            Home team
+            <input
+              value={homeTeam}
+              onChange={e => setHomeTeam(e.target.value)}
+            />
+          </label>
+
+          <label>
+            Away team
+            <input
+              value={awayTeam}
+              onChange={e => setAwayTeam(e.target.value)}
+            />
+          </label>
+
+          <label>
+            Round
+            <input value={round} onChange={e => setRound(e.target.value)} />
+          </label>
+
+          <label>
+            Kickoff
+            <input
+              type="datetime-local"
+              value={kickoff}
+              onChange={e => setKickoff(e.target.value)}
+            />
+          </label>
+
+          <div className="scoreRow">
+            <button className="primary" onClick={saveMatchDetails}>
+              Save
+            </button>
+
+            <button className="secondary" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+          </div>
+        </>
+      )}
+
+      <div className="scoreRow">
+        <input
+          type="number"
+          min="0"
+          value={homeGoals}
+          onChange={e => setHomeGoals(e.target.value)}
+        />
+
+        <input
+          type="number"
+          min="0"
+          value={awayGoals}
+          onChange={e => setAwayGoals(e.target.value)}
+        />
+
+        <button className="secondary" onClick={publish} disabled={busy}>
+          {busy ? 'Updating...' : match.resultPublished ? 'Update result' : 'Publish'}
+        </button>
+      </div>
+
+      <div className="scoreRow">
+        <button className="secondary" onClick={unpublish} disabled={busy}>
+          Unpublish
+        </button>
+
+        <button className="danger" onClick={removeMatch} disabled={busy}>
+          Delete
+        </button>
+      </div>
+
+      {saved && <p className="success">{saved}</p>}
+    </article>
+  );
+}
+
+function Empty({ text }) {
+  return <p className="muted empty">{text}</p>;
+}
+
+createRoot(document.getElementById('root')).render(<App />);
