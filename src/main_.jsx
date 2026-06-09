@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { createRoot } from 'react-dom/client';
-import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+import React, { useEffect, useMemo, useState } from "react";
+import { createRoot } from "react-dom/client";
+import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import {
   collection,
   doc,
@@ -14,61 +14,61 @@ import {
   query,
   orderBy,
   where,
-  writeBatch
-} from 'firebase/firestore';
-import { auth, db, googleProvider } from './firebase';
-import { scorePrediction } from './scoring';
-import './styles.css';
+  writeBatch,
+} from "firebase/firestore";
+import { auth, db, googleProvider } from "./firebase";
+import { scorePrediction } from "./scoring";
+import "./styles.css";
 
-const TIME_ZONE = 'America/Chicago';
-const TIME_ZONE_LABEL = 'CT';
+const TIME_ZONE = "America/Chicago";
+const TIME_ZONE_LABEL = "CT";
 const LOCK_MINUTES_BEFORE_KICKOFF = 0;
 
 function formatCentralDate(iso) {
-  if (!iso) return 'Date not set';
+  if (!iso) return "Date not set";
 
-  return new Date(iso).toLocaleDateString('en-US', {
+  return new Date(iso).toLocaleDateString("en-US", {
     timeZone: TIME_ZONE,
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric'
+    weekday: "short",
+    month: "short",
+    day: "numeric",
   });
 }
 
 function formatCentralDateTime(iso) {
-  if (!iso) return 'Date not set';
+  if (!iso) return "Date not set";
 
-  return new Date(iso).toLocaleString('en-US', {
+  return new Date(iso).toLocaleString("en-US", {
     timeZone: TIME_ZONE,
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit'
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   });
 }
 
 function formatCentralLockTime(iso) {
-  if (!iso) return 'Lock time not set';
+  if (!iso) return "Lock time not set";
 
   const lockTime =
     new Date(iso).getTime() - LOCK_MINUTES_BEFORE_KICKOFF * 60 * 1000;
 
-  return new Date(lockTime).toLocaleString('en-US', {
+  return new Date(lockTime).toLocaleString("en-US", {
     timeZone: TIME_ZONE,
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit'
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   });
 }
 
 function toLocalInputValue(iso) {
-  if (!iso) return '';
+  if (!iso) return "";
 
   const date = new Date(iso);
 
-  if (Number.isNaN(date.getTime())) return '';
+  if (Number.isNaN(date.getTime())) return "";
 
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
     .toISOString()
@@ -76,7 +76,7 @@ function toLocalInputValue(iso) {
 }
 
 function formatCountdown(ms) {
-  if (ms <= 0) return 'Prediction Closed';
+  if (ms <= 0) return "Prediction Closed";
 
   const totalSeconds = Math.floor(ms / 1000);
   const days = Math.floor(totalSeconds / 86400);
@@ -97,10 +97,10 @@ function App() {
   const [matches, setMatches] = useState([]);
   const [myPredictions, setMyPredictions] = useState([]);
   const [users, setUsers] = useState([]);
-  const [tab, setTab] = useState('matches');
+  const [tab, setTab] = useState("matches");
 
   useEffect(() => {
-    return onAuthStateChanged(auth, async user => {
+    return onAuthStateChanged(auth, async (user) => {
       setAuthUser(user);
 
       if (!user) {
@@ -109,20 +109,20 @@ function App() {
         return;
       }
 
-      const userRef = doc(db, 'users', user.uid);
+      const userRef = doc(db, "users", user.uid);
       const userSnap = await getDoc(userRef);
 
       if (!userSnap.exists()) {
         await setDoc(userRef, {
-          name: user.displayName || '',
-          country: '',
-          photoURL: user.photoURL || '',
-          email: user.email || '',
-          createdAt: serverTimestamp()
+          name: user.displayName || "",
+          country: "",
+          photoURL: user.photoURL || "",
+          email: user.email || "",
+          createdAt: serverTimestamp(),
         });
       }
 
-      const adminSnap = await getDoc(doc(db, 'admins', user.uid));
+      const adminSnap = await getDoc(doc(db, "admins", user.uid));
       setIsAdmin(adminSnap.exists());
     });
   }, []);
@@ -130,26 +130,26 @@ function App() {
   useEffect(() => {
     if (!authUser) return;
 
-    const unsubProfile = onSnapshot(doc(db, 'users', authUser.uid), snap => {
+    const unsubProfile = onSnapshot(doc(db, "users", authUser.uid), (snap) => {
       setProfile({ id: snap.id, ...snap.data() });
     });
 
     const unsubMatches = onSnapshot(
-      query(collection(db, 'matches'), orderBy('kickoff', 'asc')),
-      snap => {
-        setMatches(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      }
+      query(collection(db, "matches"), orderBy("kickoff", "asc")),
+      (snap) => {
+        setMatches(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      },
     );
 
     const unsubPredictions = onSnapshot(
-      query(collection(db, 'predictions'), where('uid', '==', authUser.uid)),
-        snap => {
-          setMyPredictions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        }
-      ); 
+      query(collection(db, "predictions"), where("uid", "==", authUser.uid)),
+      (snap) => {
+        setMyPredictions(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      },
+    );
 
-    const unsubUsers = onSnapshot(collection(db, 'users'), snap => {
-      setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    const unsubUsers = onSnapshot(collection(db, "users"), (snap) => {
+      setUsers(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
 
     return () => {
@@ -162,16 +162,16 @@ function App() {
 
   const leaderboard = useMemo(() => {
     return users
-      .map(user => {
-        const userPredictions = predictions.filter(p => p.uid === user.id);
+      .map((user) => {
+        const userPredictions = predictions.filter((p) => p.uid === user.id);
 
         const points = userPredictions.reduce((sum, prediction) => {
-          const match = matches.find(m => m.id === prediction.matchId);
+          const match = matches.find((m) => m.id === prediction.matchId);
           return sum + scorePrediction(prediction, match);
         }, 0);
 
-        const exact = userPredictions.filter(prediction => {
-          const match = matches.find(m => m.id === prediction.matchId);
+        const exact = userPredictions.filter((prediction) => {
+          const match = matches.find((m) => m.id === prediction.matchId);
           return scorePrediction(prediction, match) === 4;
         }).length;
 
@@ -181,7 +181,7 @@ function App() {
         (a, b) =>
           b.points - a.points ||
           b.exact - a.exact ||
-          (a.name || '').localeCompare(b.name || '')
+          (a.name || "").localeCompare(b.name || ""),
       );
   }, [users, predictions, matches]);
 
@@ -195,65 +195,69 @@ function App() {
           <h1>Predict & climb</h1>
 
           <p className="timezone">
-            🕒 All match times are displayed in Central Time ({TIME_ZONE_LABEL}).
-            Predictions lock at kickoff.
+            🕒 All match times are displayed in Central Time ({TIME_ZONE_LABEL}
+            ). Predictions lock at kickoff.
           </p>
         </div>
 
         <div className="logoutWrapper">
-        <button
-          className="iconBtn"
-          onClick={() => signOut(auth)}
-          title="Sign out"
-        >
-          ↗
-        </button>
+          <button
+            className="iconBtn"
+            onClick={() => signOut(auth)}
+            title="Sign out"
+          >
+            ↗
+          </button>
 
-        <span className="logoutLabel">Logout</span>
-      </div>
+          <span className="logoutLabel">Logout</span>
+        </div>
       </header>
 
       <nav className="tabs">
         <button
-          className={tab === 'matches' ? 'active' : ''}
-          onClick={() => setTab('matches')}
+          className={tab === "matches" ? "active" : ""}
+          onClick={() => setTab("matches")}
         >
           🏆 Matches
         </button>
 
         <button
-          className={tab === 'leaderboard' ? 'active' : ''}
-          onClick={() => setTab('leaderboard')}
+          className={tab === "leaderboard" ? "active" : ""}
+          onClick={() => setTab("leaderboard")}
         >
           🥇 Board
         </button>
 
         <button
-          className={tab === 'profile' ? 'active' : ''}
-          onClick={() => setTab('profile')}
+          className={tab === "profile" ? "active" : ""}
+          onClick={() => setTab("profile")}
         >
           👤 Profile
         </button>
 
         {isAdmin && (
           <button
-            className={tab === 'admin' ? 'active' : ''}
-            onClick={() => setTab('admin')}
+            className={tab === "admin" ? "active" : ""}
+            onClick={() => setTab("admin")}
           >
             🛡 Admin
           </button>
         )}
       </nav>
 
-      {tab === 'matches' && (
-        <Matches matches={matches} predictions={myPredictions} uid={authUser.uid}/>
+      {tab === "matches" && (
+        <Matches
+          matches={matches}
+          predictions={myPredictions}
+          uid={authUser.uid}
+        />
       )}
 
-      {tab === 'leaderboard' && <Leaderboard rows={leaderboard} />}
+      {tab === "leaderboard" && <Leaderboard rows={leaderboard} />}
 
-      {tab === 'profile' && <Profile profile={profile} uid={authUser.uid} />}
+      {tab === "profile" && <Profile profile={profile} uid={authUser.uid} />}
 
-      {tab === 'admin' && isAdmin && <Admin matches={matches} />}
+      {tab === "admin" && isAdmin && <Admin matches={matches} />}
     </main>
   );
 }
@@ -295,18 +299,18 @@ function Matches({ matches, predictions, uid }) {
     const now = Date.now();
 
     const upcomingMatch =
-      matches.find(match => new Date(match.kickoff).getTime() >= now) ||
+      matches.find((match) => new Date(match.kickoff).getTime() >= now) ||
       matches[matches.length - 1];
 
     if (!upcomingMatch) return;
 
     const dayId = `day-${formatCentralDate(upcomingMatch.kickoff)
-      .replaceAll(' ', '-')
-      .replaceAll(',', '')}`;
+      .replaceAll(" ", "-")
+      .replaceAll(",", "")}`;
 
     document.getElementById(dayId)?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start'
+      behavior: "smooth",
+      block: "start",
     });
   };
 
@@ -319,18 +323,18 @@ function Matches({ matches, predictions, uid }) {
       )}
 
       {Object.entries(grouped).map(([day, list]) => {
-        const dayId = `day-${day.replaceAll(' ', '-').replaceAll(',', '')}`;
+        const dayId = `day-${day.replaceAll(" ", "-").replaceAll(",", "")}`;
 
         return (
           <div key={day} id={dayId}>
             <h2 className="day">📅 {day}</h2>
 
-            {list.map(match => (
+            {list.map((match) => (
               <MatchCard
                 key={match.id}
                 match={match}
                 prediction={predictions.find(
-                  p => p.uid === uid && p.matchId === match.id
+                  (p) => p.uid === uid && p.matchId === match.id,
                 )}
                 uid={uid}
               />
@@ -348,8 +352,7 @@ function Matches({ matches, predictions, uid }) {
 
 function MatchCard({ match, prediction, uid }) {
   const lockTime =
-    new Date(match.kickoff).getTime() -
-    LOCK_MINUTES_BEFORE_KICKOFF * 60 * 1000;
+    new Date(match.kickoff).getTime() - LOCK_MINUTES_BEFORE_KICKOFF * 60 * 1000;
 
   const locked = Date.now() >= lockTime;
 
@@ -362,30 +365,30 @@ function MatchCard({ match, prediction, uid }) {
 
   const countdownText = formatCountdown(lockTime - now);
 
-  const [homeGoals, setHomeGoals] = useState(prediction?.homeGoals ?? '');
-  const [awayGoals, setAwayGoals] = useState(prediction?.awayGoals ?? '');
+  const [homeGoals, setHomeGoals] = useState(prediction?.homeGoals ?? "");
+  const [awayGoals, setAwayGoals] = useState(prediction?.awayGoals ?? "");
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    setHomeGoals(prediction?.homeGoals ?? '');
-    setAwayGoals(prediction?.awayGoals ?? '');
+    setHomeGoals(prediction?.homeGoals ?? "");
+    setAwayGoals(prediction?.awayGoals ?? "");
   }, [prediction?.homeGoals, prediction?.awayGoals]);
 
   async function save() {
     if (locked) {
-      return alert('Predictions are locked for this match.');
+      return alert("Predictions are locked for this match.");
     }
 
     await setDoc(
-      doc(db, 'predictions', `${uid}_${match.id}`),
+      doc(db, "predictions", `${uid}_${match.id}`),
       {
         uid,
         matchId: match.id,
         homeGoals: Number(homeGoals),
         awayGoals: Number(awayGoals),
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
       },
-      { merge: true }
+      { merge: true },
     );
 
     setSaved(true);
@@ -399,8 +402,8 @@ function MatchCard({ match, prediction, uid }) {
           {formatCentralDateTime(match.kickoff)} {TIME_ZONE_LABEL}
         </span>
 
-        <span className={locked ? 'pill locked' : 'pill'}>
-          {locked ? 'Locked' : 'Open'}
+        <span className={locked ? "pill locked" : "pill"}>
+          {locked ? "Locked" : "Open"}
         </span>
       </div>
 
@@ -412,7 +415,7 @@ function MatchCard({ match, prediction, uid }) {
           min="0"
           value={homeGoals}
           disabled={locked}
-          onChange={e => setHomeGoals(e.target.value)}
+          onChange={(e) => setHomeGoals(e.target.value)}
         />
 
         <span>vs</span>
@@ -422,27 +425,23 @@ function MatchCard({ match, prediction, uid }) {
           min="0"
           value={awayGoals}
           disabled={locked}
-          onChange={e => setAwayGoals(e.target.value)}
+          onChange={(e) => setAwayGoals(e.target.value)}
         />
 
         <strong>{match.awayTeam}</strong>
       </div>
 
-      <div className={locked ? 'countdownBanner closed' : 'countdownBanner'}>
+      <div className={locked ? "countdownBanner closed" : "countdownBanner"}>
         <span className="countdownLabel">
-          {locked ? 'Prediction Closed' : 'Prediction closes in'}
+          {locked ? "Prediction Closed" : "Prediction closes in"}
         </span>
 
-        {!locked && (
-          <span className="countdownValue">
-            {countdownText}
-          </span>
-        )}
+        {!locked && <span className="countdownValue">{countdownText}</span>}
       </div>
 
       {match.resultPublished && (
         <p className="result">
-          Result: {match.homeGoals} - {match.awayGoals} · You earned{' '}
+          Result: {match.homeGoals} - {match.awayGoals} · You earned{" "}
           {prediction ? scorePrediction(prediction, match) : 0} pts
         </p>
       )}
@@ -453,9 +452,9 @@ function MatchCard({ match, prediction, uid }) {
         <button
           className="secondary predictionButton"
           onClick={save}
-          disabled={locked || homeGoals === '' || awayGoals === ''}
+          disabled={locked || homeGoals === "" || awayGoals === ""}
         >
-          {prediction ? 'Update My Prediction' : 'Save My Prediction'}
+          {prediction ? "Update My Prediction" : "Save My Prediction"}
         </button>
       </div>
     </article>
@@ -470,16 +469,16 @@ function Leaderboard({ rows }) {
       {rows.map((row, index) => (
         <div className="rank" key={row.id}>
           <img
-            src={row.photoURL || 'https://placehold.co/80x80?text=User'}
-            alt={row.name || 'Player'}
+            src={row.photoURL || "https://placehold.co/80x80?text=User"}
+            alt={row.name || "Player"}
           />
 
           <div>
             <strong>
-              #{index + 1} {row.name || 'Player'}
+              #{index + 1} {row.name || "Player"}
             </strong>
             <p>
-              {row.country || 'No country'} · {row.exact} exact scores
+              {row.country || "No country"} · {row.exact} exact scores
             </p>
           </div>
 
@@ -494,9 +493,9 @@ function Leaderboard({ rows }) {
 
 function Profile({ profile, uid }) {
   const [form, setForm] = useState({
-    name: '',
-    country: '',
-    photoURL: ''
+    name: "",
+    country: "",
+    photoURL: "",
   });
 
   const [saved, setSaved] = useState(false);
@@ -505,14 +504,14 @@ function Profile({ profile, uid }) {
     if (!profile) return;
 
     setForm({
-      name: profile.name || '',
-      country: profile.country || '',
-      photoURL: profile.photoURL || ''
+      name: profile.name || "",
+      country: profile.country || "",
+      photoURL: profile.photoURL || "",
     });
   }, [profile]);
 
   async function save() {
-    await setDoc(doc(db, 'users', uid), form, { merge: true });
+    await setDoc(doc(db, "users", uid), form, { merge: true });
 
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
@@ -526,7 +525,7 @@ function Profile({ profile, uid }) {
         Name
         <input
           value={form.name}
-          onChange={e => setForm({ ...form, name: e.target.value })}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
         />
       </label>
 
@@ -534,7 +533,7 @@ function Profile({ profile, uid }) {
         Country
         <input
           value={form.country}
-          onChange={e => setForm({ ...form, country: e.target.value })}
+          onChange={(e) => setForm({ ...form, country: e.target.value })}
         />
       </label>
 
@@ -542,7 +541,7 @@ function Profile({ profile, uid }) {
         Photo URL
         <input
           value={form.photoURL}
-          onChange={e => setForm({ ...form, photoURL: e.target.value })}
+          onChange={(e) => setForm({ ...form, photoURL: e.target.value })}
         />
       </label>
 
@@ -557,39 +556,39 @@ function Profile({ profile, uid }) {
 
 function Admin({ matches }) {
   const [match, setMatch] = useState({
-    id: '',
-    homeTeam: '',
-    awayTeam: '',
-    kickoff: '',
-    round: ''
+    id: "",
+    homeTeam: "",
+    awayTeam: "",
+    kickoff: "",
+    round: "",
   });
 
-  const [saved, setSaved] = useState('');
+  const [saved, setSaved] = useState("");
 
   async function createMatch() {
     if (!match.id || !match.homeTeam || !match.awayTeam || !match.kickoff) {
-      return alert('Please fill match ID, teams, and kickoff.');
+      return alert("Please fill match ID, teams, and kickoff.");
     }
 
-    await setDoc(doc(db, 'matches', match.id), {
+    await setDoc(doc(db, "matches", match.id), {
       homeTeam: match.homeTeam.trim(),
       awayTeam: match.awayTeam.trim(),
       round: match.round.trim(),
       kickoff: new Date(match.kickoff).toISOString(),
       resultPublished: false,
-      createdAt: serverTimestamp()
+      createdAt: serverTimestamp(),
     });
 
     setSaved(`✅ ${match.homeTeam} vs ${match.awayTeam} added`);
     setMatch({
-      id: '',
-      homeTeam: '',
-      awayTeam: '',
-      kickoff: '',
-      round: ''
+      id: "",
+      homeTeam: "",
+      awayTeam: "",
+      kickoff: "",
+      round: "",
     });
 
-    setTimeout(() => setSaved(''), 2500);
+    setTimeout(() => setSaved(""), 2500);
   }
 
   return (
@@ -602,7 +601,7 @@ function Admin({ matches }) {
           <input
             placeholder="match003"
             value={match.id}
-            onChange={e => setMatch({ ...match, id: e.target.value })}
+            onChange={(e) => setMatch({ ...match, id: e.target.value })}
           />
         </label>
 
@@ -611,7 +610,7 @@ function Admin({ matches }) {
           <input
             placeholder="Group A"
             value={match.round}
-            onChange={e => setMatch({ ...match, round: e.target.value })}
+            onChange={(e) => setMatch({ ...match, round: e.target.value })}
           />
         </label>
 
@@ -619,7 +618,7 @@ function Admin({ matches }) {
           Home team
           <input
             value={match.homeTeam}
-            onChange={e => setMatch({ ...match, homeTeam: e.target.value })}
+            onChange={(e) => setMatch({ ...match, homeTeam: e.target.value })}
           />
         </label>
 
@@ -627,7 +626,7 @@ function Admin({ matches }) {
           Away team
           <input
             value={match.awayTeam}
-            onChange={e => setMatch({ ...match, awayTeam: e.target.value })}
+            onChange={(e) => setMatch({ ...match, awayTeam: e.target.value })}
           />
         </label>
 
@@ -636,7 +635,7 @@ function Admin({ matches }) {
           <input
             type="datetime-local"
             value={match.kickoff}
-            onChange={e => setMatch({ ...match, kickoff: e.target.value })}
+            onChange={(e) => setMatch({ ...match, kickoff: e.target.value })}
           />
         </label>
 
@@ -649,7 +648,7 @@ function Admin({ matches }) {
 
       <h2 className="day">Publish results</h2>
 
-      {matches.map(match => (
+      {matches.map((match) => (
         <AdminResult key={match.id} match={match} />
       ))}
     </section>
@@ -658,72 +657,83 @@ function Admin({ matches }) {
 
 function AdminResult({ match }) {
   const [editing, setEditing] = useState(false);
-  const [homeTeam, setHomeTeam] = useState(match.homeTeam ?? '');
-  const [awayTeam, setAwayTeam] = useState(match.awayTeam ?? '');
-  const [round, setRound] = useState(match.round ?? '');
+  const [homeTeam, setHomeTeam] = useState(match.homeTeam ?? "");
+  const [awayTeam, setAwayTeam] = useState(match.awayTeam ?? "");
+  const [round, setRound] = useState(match.round ?? "");
   const [kickoff, setKickoff] = useState(toLocalInputValue(match.kickoff));
-  const [homeGoals, setHomeGoals] = useState(match.homeGoals ?? '');
-  const [awayGoals, setAwayGoals] = useState(match.awayGoals ?? '');
-  const [saved, setSaved] = useState('');
+  const [homeGoals, setHomeGoals] = useState(match.homeGoals ?? "");
+  const [awayGoals, setAwayGoals] = useState(match.awayGoals ?? "");
+  const [saved, setSaved] = useState("");
+
+  const lockTime =
+    new Date(match.kickoff).getTime() - LOCK_MINUTES_BEFORE_KICKOFF * 60 * 1000;
+  const isLocked = Date.now() >= lockTime;
 
   useEffect(() => {
-    setHomeTeam(match.homeTeam ?? '');
-    setAwayTeam(match.awayTeam ?? '');
-    setRound(match.round ?? '');
+    setHomeTeam(match.homeTeam ?? "");
+    setAwayTeam(match.awayTeam ?? "");
+    setRound(match.round ?? "");
     setKickoff(toLocalInputValue(match.kickoff));
-    setHomeGoals(match.homeGoals ?? '');
-    setAwayGoals(match.awayGoals ?? '');
+    setHomeGoals(match.homeGoals ?? "");
+    setAwayGoals(match.awayGoals ?? "");
   }, [match]);
 
   async function saveMatchDetails() {
     if (!homeTeam || !awayTeam || !kickoff) {
-      return alert('Please fill home team, away team, and kickoff.');
+      return alert("Please fill home team, away team, and kickoff.");
     }
 
-    await updateDoc(doc(db, 'matches', match.id), {
+    await updateDoc(doc(db, "matches", match.id), {
       homeTeam: homeTeam.trim(),
       awayTeam: awayTeam.trim(),
       round: round.trim(),
       kickoff: new Date(kickoff).toISOString(),
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
     });
 
     setEditing(false);
-    setSaved('✅ Match updated');
-    setTimeout(() => setSaved(''), 2500);
+    setSaved("✅ Match updated");
+    setTimeout(() => setSaved(""), 2500);
   }
   async function recalculateLeaderboard() {
-    const predictionsSnap = await getDocs(collection(db, 'predictions'));
-    const usersSnap = await getDocs(collection(db, 'users'));
-    const matchesSnap = await getDocs(collection(db, 'matches'));
+    const predictionsSnap = await getDocs(collection(db, "predictions"));
+    const usersSnap = await getDocs(collection(db, "users"));
+    const matchesSnap = await getDocs(collection(db, "matches"));
 
-    const allMatches = matchesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const allPredictions = predictionsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const allMatches = matchesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const allUsers = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const allPredictions = predictionsSnap.docs.map((d) => ({
+      id: d.id,
+      ...d.data(),
+    }));
 
     const batch = writeBatch(db);
 
-    allUsers.forEach(user => {
-      const userPredictions = allPredictions.filter(p => p.uid === user.id);
+    allUsers.forEach((user) => {
+      const userPredictions = allPredictions.filter((p) => p.uid === user.id);
 
       const totalPoints = userPredictions.reduce((sum, prediction) => {
-        const predictionMatch = allMatches.find(m => m.id === prediction.matchId);
+        const predictionMatch = allMatches.find(
+          (m) => m.id === prediction.matchId,
+        );
         return sum + scorePrediction(prediction, predictionMatch);
       }, 0);
 
-      const exactScores = userPredictions.filter(prediction => {
-        const predictionMatch = allMatches.find(m => m.id === prediction.matchId);
+      const exactScores = userPredictions.filter((prediction) => {
+        const predictionMatch = allMatches.find(
+          (m) => m.id === prediction.matchId,
+        );
         return scorePrediction(prediction, predictionMatch) === 4;
       }).length;
 
       batch.set(
-        doc(db, 'users', user.id),
+        doc(db, "users", user.id),
         {
           totalPoints,
           exactScores,
-          leaderboardUpdatedAt: serverTimestamp()
+          leaderboardUpdatedAt: serverTimestamp(),
         },
-        { merge: true }
+        { merge: true },
       );
     });
 
@@ -731,35 +741,145 @@ function AdminResult({ match }) {
   }
 
   async function publish() {
-    if (homeGoals === '' || awayGoals === '') {
-      return alert('Please enter both final scores.');
+    if (homeGoals === "" || awayGoals === "") {
+      return alert("Please enter both final scores.");
     }
 
-    await updateDoc(doc(db, 'matches', match.id), {
+    await updateDoc(doc(db, "matches", match.id), {
       homeGoals: Number(homeGoals),
       awayGoals: Number(awayGoals),
       resultPublished: true,
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
     });
 
-    setSaved('✅ Result published');
-    setTimeout(() => setSaved(''), 2500);
+    setSaved("✅ Result published");
+    setTimeout(() => setSaved(""), 2500);
   }
 
   async function unpublish() {
-    await updateDoc(doc(db, 'matches', match.id), {
+    await updateDoc(doc(db, "matches", match.id), {
       resultPublished: false,
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
     });
 
-    setSaved('↩️ Result unpublished');
-    setTimeout(() => setSaved(''), 2500);
+    setSaved("↩️ Result unpublished");
+    setTimeout(() => setSaved(""), 2500);
   }
 
   async function removeMatch() {
     if (!confirm(`Delete ${match.homeTeam} vs ${match.awayTeam}?`)) return;
 
-    await deleteDoc(doc(db, 'matches', match.id));
+    await deleteDoc(doc(db, "matches", match.id));
+  }
+
+  async function sendEmailNotification() {
+    const usersSnap = await getDocs(collection(db, "users"));
+    const predictionsSnap = await getDocs(
+      query(collection(db, "predictions"), where("matchId", "==", match.id)),
+    );
+
+    const allUsers = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const matchPredictions = predictionsSnap.docs.map((d) => ({
+      id: d.id,
+      ...d.data(),
+    }));
+
+    const bccEmails = allUsers.map((u) => u.email).filter(Boolean);
+
+    if (bccEmails.length === 0) {
+      return alert("No users to notify.");
+    }
+
+    const predictions = matchPredictions
+      .map((p) => {
+        const user = allUsers.find((u) => u.id === p.uid);
+        return {
+          playerName: user?.name || "Anonymous",
+          homeGoals: p.homeGoals ?? "-",
+          awayGoals: p.awayGoals ?? "-",
+        };
+      })
+      .sort((a, b) => a.playerName.localeCompare(b.playerName));
+
+    const matchData = {
+      homeTeam: match.homeTeam,
+      awayTeam: match.awayTeam,
+      kickoff: formatCentralDateTime(match.kickoff),
+    };
+
+    try {
+      const html = generateEmailHtml(matchData, predictions);
+
+      await fetch("https://api.sendgrid.com/v3/mail/send", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${import.meta.env.VITE_SENDGRID_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          personalizations: [
+            {
+              to: [{ email: import.meta.env.VITE_SENDGRID_TO_EMAIL }],
+              bcc: bccEmails.map((email) => ({ email })),
+              subject: `🏆 ${match.homeTeam} vs ${match.awayTeam} - Match Kickoff`,
+            },
+          ],
+          from: {
+            email: import.meta.env.VITE_SENDGRID_FROM_EMAIL,
+            name: "FIFA World Cup 2026",
+          },
+          content: [
+            {
+              type: "text/html",
+              value: html,
+            },
+          ],
+        }),
+      });
+
+      setSaved(`✅ Email sent`);
+      setTimeout(() => setSaved(""), 2500);
+    } catch (error) {
+      alert(`Error sending emails: ${error.message}`);
+    }
+  }
+
+  function generateEmailHtml(matchData, predictions) {
+    const predictionRows = predictions
+      .map(
+        (p) => `
+        <tr>
+          <td style="padding: 10px; border-bottom: 1px solid #ddd;">${p.playerName}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #ddd; text-align: center;">${p.homeGoals}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #ddd; text-align: center;">${p.awayGoals}</td>
+        </tr>
+      `,
+      )
+      .join("");
+
+    return `
+      <!DOCTYPE html>
+      <html>
+        <body style="font-family: Arial, sans-serif; color: #333;">
+          <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+            <h2>${matchData.homeTeam} vs ${matchData.awayTeam}</h2>
+            <p><strong>Kickoff:</strong> ${matchData.kickoff}</p>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+              <thead>
+                <tr style="background: #f5f5f5;">
+                  <th style="padding: 10px; text-align: left; border-bottom: 2px solid #333;">Name</th>
+                  <th style="padding: 10px; text-align: center; border-bottom: 2px solid #333;">${matchData.homeTeam}</th>
+                  <th style="padding: 10px; text-align: center; border-bottom: 2px solid #333;">${matchData.awayTeam}</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${predictionRows}
+              </tbody>
+            </table>
+          </div>
+        </body>
+      </html>
+    `;
   }
 
   return (
@@ -771,7 +891,7 @@ function AdminResult({ match }) {
           </strong>
 
           <p className="muted">
-            {match.round || 'No round'} · {formatCentralDateTime(match.kickoff)}{' '}
+            {match.round || "No round"} · {formatCentralDateTime(match.kickoff)}{" "}
             {TIME_ZONE_LABEL}
           </p>
 
@@ -785,7 +905,7 @@ function AdminResult({ match }) {
             Home team
             <input
               value={homeTeam}
-              onChange={e => setHomeTeam(e.target.value)}
+              onChange={(e) => setHomeTeam(e.target.value)}
             />
           </label>
 
@@ -793,13 +913,13 @@ function AdminResult({ match }) {
             Away team
             <input
               value={awayTeam}
-              onChange={e => setAwayTeam(e.target.value)}
+              onChange={(e) => setAwayTeam(e.target.value)}
             />
           </label>
 
           <label>
             Round
-            <input value={round} onChange={e => setRound(e.target.value)} />
+            <input value={round} onChange={(e) => setRound(e.target.value)} />
           </label>
 
           <label>
@@ -807,7 +927,7 @@ function AdminResult({ match }) {
             <input
               type="datetime-local"
               value={kickoff}
-              onChange={e => setKickoff(e.target.value)}
+              onChange={(e) => setKickoff(e.target.value)}
             />
           </label>
 
@@ -828,18 +948,18 @@ function AdminResult({ match }) {
           type="number"
           min="0"
           value={homeGoals}
-          onChange={e => setHomeGoals(e.target.value)}
+          onChange={(e) => setHomeGoals(e.target.value)}
         />
 
         <input
           type="number"
           min="0"
           value={awayGoals}
-          onChange={e => setAwayGoals(e.target.value)}
+          onChange={(e) => setAwayGoals(e.target.value)}
         />
 
         <button className="secondary" onClick={publish}>
-          {match.resultPublished ? 'Update result' : 'Publish'}
+          {match.resultPublished ? "Update result" : "Publish"}
         </button>
       </div>
 
@@ -853,6 +973,12 @@ function AdminResult({ match }) {
         </button>
       </div>
 
+      <div className="scoreRow">
+        <button className="secondary" onClick={sendEmailNotification}>
+          📧 Send Match Email
+        </button>
+      </div>
+
       {saved && <p className="success">{saved}</p>}
     </article>
   );
@@ -862,4 +988,4 @@ function Empty({ text }) {
   return <p className="muted empty">{text}</p>;
 }
 
-createRoot(document.getElementById('root')).render(<App />);
+createRoot(document.getElementById("root")).render(<App />);

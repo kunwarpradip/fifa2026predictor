@@ -2,3 +2,5 @@ dist
 firebase.txt
 .ds_store
 tools
+node_modules
+.en*

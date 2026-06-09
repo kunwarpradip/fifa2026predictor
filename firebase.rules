@@ -4,10 +4,40 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
     function isAdmin() { return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
     function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+    function canCreateOwnUser() {
+      return request.resource.data.keys().hasOnly([
+        "name",
+        "place",
+        "photoURL",
+        "email",
+        "totalPoints",
+        "exactScores",
+        "paymentStatus",
+        "entryFeePaid",
+        "createdAt"
+      ])
+      && request.resource.data.totalPoints == 0
+      && request.resource.data.exactScores == 0
+      && request.resource.data.paymentStatus == "unpaid"
+      && request.resource.data.entryFeePaid == false;
+    }
+    function canUpdateOwnUser() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        "name",
+        "place",
+        "championPick",
+        "championPickUpdatedAt"
+      ]);
+    }
 
     match /admins/{uid} { allow read: if signedIn(); allow write: if isAdmin(); }
-    match /users/{uid} { allow read: if signedIn(); allow create, update: if isOwner(uid); }
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create: if isOwner(uid) && canCreateOwnUser();
+      allow update: if isAdmin() || (isOwner(uid) && canUpdateOwnUser());
+    }
     match /matches/{matchId} { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /settings/{settingId} { allow read: if signedIn(); allow write: if isAdmin(); }
     match /predictions/{predictionId} {
       allow read: if signedIn();
       allow create, update: if signedIn()
