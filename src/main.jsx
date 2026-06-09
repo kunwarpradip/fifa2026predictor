@@ -19,6 +19,7 @@ import {
 import { auth, db, googleProvider } from './firebase';
 import { scorePrediction } from './scoring';
 import './styles.css';
+import { flagUrl } from './teamFlags';
 
 const TIME_ZONE = 'America/Chicago';
 const TIME_ZONE_LABEL = 'CT';
@@ -225,6 +226,13 @@ function App() {
         </button>
 
         <button
+          className={tab === 'predictions' ? 'active' : ''}
+          onClick={() => setTab('predictions')}
+        >
+          👀 Picks
+        </button>
+
+        <button
           className={tab === 'leaderboard' ? 'active' : ''}
           onClick={() => setTab('leaderboard')}
         >
@@ -264,7 +272,9 @@ function App() {
         />
       )}
 
-
+      {tab === 'predictions' && (
+        <PublicPredictions matches={matches} users={users} />
+      )}
       {tab === 'leaderboard' && <Leaderboard rows={leaderboard} />}
 
       {tab === 'rules' && <Rules />}
@@ -370,7 +380,7 @@ function Matches({ matches, predictions, uid, profile }) {
 
         return (
           <div key={day} id={dayId}>
-            <h2 className="day">📅 {day}</h2>
+            <h2 className="day"> {day}</h2>
 
             {list.map(match => (
               <MatchCard
@@ -388,6 +398,222 @@ function Matches({ matches, predictions, uid, profile }) {
 
       {matches.length === 0 && (
         <Empty text="No matches yet. Ask an admin to add fixtures." />
+      )}
+    </section>
+  );
+}
+
+function PublicPredictions({ matches, users }) {
+  const [selectedMatchId, setSelectedMatchId] = useState('');
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const selectedMatch =
+    matches.find(match => match.id === selectedMatchId) || null;
+
+  useEffect(() => {
+    if (selectedMatchId || matches.length === 0) return;
+
+    const now = Date.now();
+
+    const latestStartedMatch =
+      [...matches]
+        .filter(match => new Date(match.kickoff).getTime() <= now)
+        .sort(
+          (a, b) =>
+            new Date(b.kickoff).getTime() -
+            new Date(a.kickoff).getTime()
+        )[0];
+
+    if (latestStartedMatch) {
+      setSelectedMatchId(latestStartedMatch.id);
+    }
+  }, [matches, selectedMatchId]);
+
+  const groupedMatches = matches.reduce((acc, match) => {
+    const round = match.round || 'Other Matches';
+    (acc[round] ||= []).push(match);
+    return acc;
+  }, {});
+
+  useEffect(() => {
+    async function loadPredictions() {
+      if (!selectedMatchId || !selectedMatch) {
+        setRows([]);
+        return;
+      }
+
+      const kickoffPassed =
+        new Date(selectedMatch.kickoff).getTime() <= Date.now();
+
+      if (!kickoffPassed) {
+        setRows([]);
+        return;
+      }
+
+      setLoading(true);
+
+      try {
+        const snap = await getDocs(
+          query(
+            collection(db, 'predictions'),
+            where('matchId', '==', selectedMatchId)
+          )
+        );
+
+        const predictions = snap.docs.map(docSnap => ({
+          id: docSnap.id,
+          ...docSnap.data()
+        }));
+
+        const approvedUsers = users.filter(user => user.approved === true);
+
+        const predictionRows = approvedUsers.map(user => {
+          const prediction = predictions.find(p => p.uid === user.id);
+
+          if (!prediction) {
+            return {
+              id: `missing_${user.id}`,
+              uid: user.id,
+              userName: user.name || 'Unknown Player',
+              hasPrediction: false,
+              homeGoals: null,
+              awayGoals: null,
+              points: ''
+            };
+          }
+
+          return {
+            ...prediction,
+            userName: user.name || 'Unknown Player',
+            hasPrediction: true,
+            points: selectedMatch.resultPublished
+              ? scorePrediction(prediction, selectedMatch)
+              : ''
+          };
+        });
+
+        // predictionRows.sort((a, b) => {
+        //   const scoreA = `${a.homeGoals}-${a.awayGoals}`;
+        //   const scoreB = `${b.homeGoals}-${b.awayGoals}`;
+
+        //   return (
+        //     scoreA.localeCompare(scoreB) ||
+        //     a.userName.localeCompare(b.userName)
+        //   );
+        // });
+        predictionRows.sort((a, b) => {
+          if (a.hasPrediction !== b.hasPrediction) {
+            return a.hasPrediction ? -1 : 1;
+          }
+
+          const scoreA = a.hasPrediction ? `${a.homeGoals}-${a.awayGoals}` : 'zz';
+          const scoreB = b.hasPrediction ? `${b.homeGoals}-${b.awayGoals}` : 'zz';
+
+          return (
+            scoreA.localeCompare(scoreB) ||
+            a.userName.localeCompare(b.userName)
+          );
+        });
+
+        setRows(predictionRows);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadPredictions();
+  }, [selectedMatchId, selectedMatch, users]);
+
+  const kickoffPassed = selectedMatch
+    ? new Date(selectedMatch.kickoff).getTime() <= Date.now()
+    : false;
+
+  return (
+    <section className="card">
+      <h2>Match Predictions</h2>
+
+      <label>
+        <select
+          value={selectedMatchId}
+          onChange={e => setSelectedMatchId(e.target.value)}
+        >
+          <option value="">Choose a match</option>
+
+          {Object.entries(groupedMatches).map(([round, list]) => (
+            <optgroup key={round} label={round}>
+              {list.map(match => (
+                <option key={match.id} value={match.id}>
+                  {match.homeTeam} vs {match.awayTeam} —{' '}
+                  {formatCentralDateTime(match.kickoff)} CT
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </label>
+
+      {!selectedMatch && (
+        <p className="muted">Select a match to view predictions.</p>
+      )}
+
+      {selectedMatch && !kickoffPassed && (
+        <p className="countdownBanner closed">
+          🔒 Predictions are hidden until kickoff.
+        </p>
+      )}
+
+      {selectedMatch && kickoffPassed && (
+        <>
+          <div className="predictionMatchHeader">
+            <strong>
+              {selectedMatch.homeTeam} vs {selectedMatch.awayTeam}
+            </strong>
+
+            <p className="muted">
+              {selectedMatch.round || 'Match'} ·{' '}
+              {formatCentralDateTime(selectedMatch.kickoff)} CT
+            </p>
+
+            {selectedMatch.resultPublished && (
+              <p className="result">
+                Final Result: {selectedMatch.homeGoals} -{' '}
+                {selectedMatch.awayGoals}
+              </p>
+            )}
+          </div>
+
+          {loading && <p className="muted">Loading predictions...</p>}
+
+          {!loading && rows.length === 0 && (
+            <p className="muted">No predictions submitted for this match.</p>
+          )}
+          {!loading && rows.length > 0 && (
+            <div className="predictionTableHeader">
+              <span>Player</span>
+              <span>Prediction</span>
+              <span>Points</span>
+            </div>
+          )}
+          {!loading &&
+            rows.map(row => (
+              <div className="publicPredictionRow" key={row.id}>
+                <div className="predictionUser">
+                  {row.userName}
+                </div>
+
+                <div className="predictionScore">
+                  {row.hasPrediction
+                    ? `${row.homeGoals} - ${row.awayGoals}`
+                    : '—'}
+                </div>
+
+                <div className="predictionPoints">
+                  {row.points !== '' ? `${row.points} pts` : ''}
+                </div>
+              </div>
+            ))}
+        </>
       )}
     </section>
   );
@@ -434,7 +660,12 @@ function ChampionPick({ matches, uid, profile }) {
 
   return (
     <article className="card">
-      <h2>🏆 World Cup Winner Pick</h2>
+      <h2>World Cup Winner Pick</h2>
+        {profile?.championPick && (
+        <div className="championSelected">
+          Your current pick: <strong>{profile.championPick}</strong>
+        </div>
+      )}
 
       <p className="muted">
         Pick your World Cup winner. You can change it until the first match kicks off.
@@ -457,16 +688,28 @@ function ChampionPick({ matches, uid, profile }) {
         </select>
       </label>
 
-      {locked && <p className="countdownBanner closed">🔒 Champion pick locked</p>}
+      {/* {locked && <p className="countdownBanner closed">🔒 Champion pick locked</p>} */}
       {saved && <p className="success">✅ Champion pick saved</p>}
 
+      {!locked ? (
       <button
-        className="primary"
+        className={
+          profile?.championPick
+            ? 'championSavedButton'
+            : 'primary'
+        }
         onClick={saveChampionPick}
-        disabled={locked || !team}
+        disabled={!team}
       >
-        Save Champion Pick
+        {profile?.championPick
+          ? '✏️ Edit Champion Pick'
+          : '🏆 Save Champion Pick'}
       </button>
+    ) : (
+      <div className="championLocked">
+        🔒 Champion Pick Locked
+      </div>
+    )}
     </article>
   );
 }
@@ -489,6 +732,7 @@ function ChampionAdmin({ matches, worldCupSettings }) {
   ).sort();
 
   async function publishChampion() {
+    
     if (!winner) return alert('Please select the World Cup winner.');
 
     setBusy(true);
@@ -507,6 +751,29 @@ function ChampionAdmin({ matches, worldCupSettings }) {
       await recalculateLeaderboard();
 
       setSaved('✅ Champion published and leaderboard updated');
+      setTimeout(() => setSaved(''), 3000);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unpublishChampion() {
+    setBusy(true);
+
+    try {
+      await setDoc(
+        doc(db, 'settings', 'worldCup'),
+        {
+          championPublished: false,
+          championTeam: '',
+          championPublishedAt: null
+        },
+        { merge: true }
+      );
+
+      await recalculateLeaderboard();
+
+      setSaved('↩️ Champion unpublished and leaderboard updated');
       setTimeout(() => setSaved(''), 3000);
     } finally {
       setBusy(false);
@@ -534,9 +801,23 @@ function ChampionAdmin({ matches, worldCupSettings }) {
 
       {saved && <p className="success">{saved}</p>}
 
-      <button className="primary" onClick={publishChampion} disabled={busy || !winner}>
-        {busy ? 'Updating...' : 'Publish Champion'}
-      </button>
+      <div className="championActions">
+        <button
+          className="primary"
+          onClick={publishChampion}
+          disabled={busy || !winner}
+        >
+          {busy ? 'Updating...' : 'Publish Champion'}
+        </button>
+
+        <button
+          className="danger"
+          onClick={unpublishChampion}
+          disabled={busy || !worldCupSettings?.championPublished}
+        >
+          Unpublish Champion
+        </button>
+      </div>
     </article>
   );
 }
@@ -598,7 +879,15 @@ function MatchCard({ match, prediction, uid }) {
       </div>
 
       <div className="teams">
-        <strong>{match.homeTeam}</strong>
+        <div className="teamName">
+          <img
+            src={flagUrl(match.homeTeam)}
+            alt={match.homeTeam}
+            className="teamFlag"
+          />
+          <strong>{match.homeTeam}</strong>
+        </div>
+
 
         <input
           type="number"
@@ -618,7 +907,14 @@ function MatchCard({ match, prediction, uid }) {
           onChange={e => setAwayGoals(e.target.value)}
         />
 
-        <strong>{match.awayTeam}</strong>
+        <div className="teamName">
+          <img
+            src={flagUrl(match.awayTeam)}
+            alt={match.awayTeam}
+            className="teamFlag"
+          />
+          <strong>{match.awayTeam}</strong>
+        </div>
       </div>
 
       <div className={locked ? 'countdownBanner closed' : 'countdownBanner'}>
@@ -654,7 +950,13 @@ function MatchCard({ match, prediction, uid }) {
 function Leaderboard({ rows }) {
   return (
     <section className="card">
-      <h2>Leaderboard</h2>
+      <div className="leaderboardHeader">
+        <h2>Leaderboard</h2>
+
+        <span className="leaderboardSummary">
+          👥 {rows.length} Players
+        </span>
+      </div>
 
       {rows.map((row, index) => (
         <div className="rank" key={row.id}>
@@ -696,6 +998,14 @@ function Rules() {
           <strong>⚽ Match Prediction</strong>
           <p>
             Predict the score for every World Cup match before kickoff.
+          </p>
+        </div>
+        <div className="ruleItem">
+          <strong>⏱️ 90-Minute Rule</strong>
+          <p>
+            All score predictions are based on the result at the end of regular time
+            (90 minutes plus injury time). Extra time and penalty shootouts are not
+            included in score prediction scoring.
           </p>
         </div>
 
@@ -779,6 +1089,13 @@ function Rules() {
             positions will be distributed equally among the tied players.
           </p>
         </div>
+        <div className="ruleItem">
+          <strong>⚠️ Anti-Cheating Rule</strong>
+
+          <p>
+            Cheating or exploiting any vulnerability of the system is illegal and the perpetrator will be expelled from the league without refund.
+          </p>
+        </div>
       </div>
     </section>
   );
@@ -833,7 +1150,7 @@ function Profile({ profile, uid }) {
       </label>
 
       <label>
-        place
+        Place
         <input
           value={form.place}
           onChange={e => setForm({ ...form, place: e.target.value })}
@@ -1246,49 +1563,72 @@ function AdminResult({ match, displayNumber }) {
   }
 
   return (
-    <article className="card compact">
+    <article className="card compact adminResultCard">
       {!editing ? (
         <>
-          <div className="adminMatchHeader">
-            <div className="adminMatchHeader">
+          <div className="adminResultHeader">
+            <div>
               <strong>Match #{displayNumber}</strong>
-              <span className="matchBadge">{match.round || 'Match'}</span>
+              <p className="adminTeams">{match.homeTeam} vs {match.awayTeam}</p>
             </div>
 
-            <p className="adminTeams">
-              {match.homeTeam} vs {match.awayTeam}
-            </p>
-
-            <span className="matchBadge">
-              {match.round || 'Group Stage'}
-            </span>
+            <span className="matchBadge">{match.round || 'Group Stage'}</span>
           </div>
 
-          <p className="muted">
-            {match.round || 'No round'} · {formatCentralDateTime(match.kickoff)}{' '}
-            {TIME_ZONE_LABEL}
+          <p className="muted adminDate">
+            {formatCentralDateTime(match.kickoff)} {TIME_ZONE_LABEL}
           </p>
 
-          <button className="secondary" onClick={() => setEditing(true)}>
-            Edit match
-          </button>
+          <div className="adminResultControls">
+            <div className="adminScoreInputs">
+              <input
+                type="number"
+                min="0"
+                value={homeGoals}
+                onChange={e => setHomeGoals(e.target.value)}
+              />
+
+              <span>-</span>
+
+              <input
+                type="number"
+                min="0"
+                value={awayGoals}
+                onChange={e => setAwayGoals(e.target.value)}
+              />
+            </div>
+
+            <div className="adminPublishGroup">
+              <button className="adminPublishBtn" onClick={publish} disabled={busy}>
+                {busy ? 'Updating...' : match.resultPublished ? 'Update' : 'Publish'}
+              </button>
+
+              <button className="adminUnpublishBtn" onClick={unpublish} disabled={busy}>
+                Unpublish
+              </button>
+            </div>
+          </div>
+
+          <div className="adminManageActions">
+            <button className="adminSmallBtn" onClick={() => setEditing(true)}>
+              Edit Match
+            </button>
+
+            <button className="adminDeleteBtn" onClick={removeMatch} disabled={busy}>
+              Delete
+            </button>
+          </div>
         </>
       ) : (
         <>
           <label>
             Home team
-            <input
-              value={homeTeam}
-              onChange={e => setHomeTeam(e.target.value)}
-            />
+            <input value={homeTeam} onChange={e => setHomeTeam(e.target.value)} />
           </label>
 
           <label>
             Away team
-            <input
-              value={awayTeam}
-              onChange={e => setAwayTeam(e.target.value)}
-            />
+            <input value={awayTeam} onChange={e => setAwayTeam(e.target.value)} />
           </label>
 
           <label>
@@ -1305,47 +1645,17 @@ function AdminResult({ match, displayNumber }) {
             />
           </label>
 
-          <div className="scoreRow">
-            <button className="primary" onClick={saveMatchDetails}>
+          <div className="adminManageActions">
+            <button className="adminPublishBtn" onClick={saveMatchDetails}>
               Save
             </button>
 
-            <button className="secondary" onClick={() => setEditing(false)}>
+            <button className="adminSmallBtn" onClick={() => setEditing(false)}>
               Cancel
             </button>
           </div>
         </>
       )}
-
-      <div className="scoreRow">
-        <input
-          type="number"
-          min="0"
-          value={homeGoals}
-          onChange={e => setHomeGoals(e.target.value)}
-        />
-
-        <input
-          type="number"
-          min="0"
-          value={awayGoals}
-          onChange={e => setAwayGoals(e.target.value)}
-        />
-
-        <button className="secondary" onClick={publish} disabled={busy}>
-          {busy ? 'Updating...' : match.resultPublished ? 'Update result' : 'Publish'}
-        </button>
-      </div>
-
-      <div className="scoreRow">
-        <button className="secondary" onClick={unpublish} disabled={busy}>
-          Unpublish
-        </button>
-
-        <button className="danger" onClick={removeMatch} disabled={busy}>
-          Delete
-        </button>
-      </div>
 
       {saved && <p className="success">{saved}</p>}
     </article>

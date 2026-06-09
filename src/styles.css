@@ -40,6 +40,9 @@ button {
   padding: 24px;
   backdrop-filter: blur(10px);
 }
+.card.match {
+  padding: 16px;
+}
 
 .loginCard {
   max-width: 420px;
@@ -210,6 +213,17 @@ h2 {
   margin-bottom: 16px;
 }
 
+.countdownBanner {
+  margin: 10px 0;
+  padding: 10px;
+  border-radius: 14px;
+}
+
+.countdownValue {
+  font-size: 18px;
+}
+
+
 .matchTop {
   display: flex;
   justify-content: space-between;
@@ -295,6 +309,7 @@ h2 {
 }
 
 .teams {
+  margin: 8px 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 72px 28px 72px minmax(0, 1fr);
   gap: 8px;
@@ -319,14 +334,29 @@ input {
 
 .teams input {
   text-align: center;
-  font-size: clamp(22px, 7vw, 34px);
   font-weight: 900;
-  width: 100%;
-  height: 64px;
-  min-height: 64px;
   padding: 0;
   line-height: 1;
   border-radius: 18px;
+  width: 60px;
+  height: 60px;
+  min-height: 60px;
+  font-size: 24px;
+}
+
+.teamName {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.teamFlag {
+  width: 32px;
+  height: 24px;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid rgba(0,0,0,.08);
 }
 
 label {
@@ -339,6 +369,11 @@ label {
 .result {
   font-weight: 800;
   margin-top: 14px;
+}
+.scoreRow {
+  display: grid;
+  grid-template-columns: 60px 60px auto;
+  gap: 8px;
 }
 
 .success {
@@ -421,6 +456,12 @@ label {
 .compact {
   padding: 18px;
 }
+.compact .secondary,
+.compact .danger {
+  min-height: 44px;
+  padding: 10px 12px;
+}
+
 
 .compact .muted {
   margin: 8px 0 12px;
@@ -492,6 +533,7 @@ select {
   margin-top: 6px;
   min-height: 52px;
   font: inherit;
+  font-weight: 500;
 }
 
 .danger {
@@ -601,4 +643,209 @@ html {
 body {
   width: 100%;
   overflow-x: hidden;
+}
+
+.adminResultCard {
+  padding: 18px;
+}
+
+.adminResultHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.adminTeams {
+  margin: 6px 0 0;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.adminDate {
+  margin: 10px 0 14px;
+  font-size: 15px;
+}
+
+.adminResultControls {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px;
+  align-items: center;
+}
+
+.adminScoreInputs {
+  display: grid;
+  grid-template-columns: 54px 14px 54px;
+  gap: 8px;
+  align-items: center;
+  text-align: center;
+}
+
+.adminScoreInputs input {
+  height: 48px;
+  min-height: 48px;
+  padding: 0;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.adminPublishGroup {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.adminPublishBtn,
+.adminUnpublishBtn,
+.adminSmallBtn,
+.adminDeleteBtn {
+  border: 0;
+  border-radius: 999px;
+  min-height: 42px;
+  padding: 10px 12px;
+  font-weight: 900;
+  font-size: 14px;
+}
+
+.adminPublishBtn {
+  background: #102018;
+  color: white;
+}
+
+.adminUnpublishBtn,
+.adminSmallBtn {
+  background: #e8f7dd;
+  color: #16361f;
+}
+
+.adminDeleteBtn {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.adminManageActions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+@media (max-width: 420px) {
+  .adminResultControls {
+    grid-template-columns: 1fr;
+  }
+
+  .adminPublishGroup {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.predictionMatchHeader {
+  margin: 14px 0;
+  padding: 14px;
+  border-radius: 16px;
+  background: #f8faf7;
+  border: 1px solid #edf0ea;
+}
+
+.publicPredictionRow {
+  display: grid;
+  grid-template-columns: 1fr 90px 70px;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  border-top: 1px solid #edf0ea;
+}
+
+.predictionUser {
+  font-weight: 500;
+  color: #102018;
+}
+
+
+.predictionScore {
+  text-align: center;
+  font-weight: 500;
+  font-size: 16px;
+  color: #344139;
+}
+
+
+.predictionPoints {
+  text-align: right;
+  font-weight: 500;
+  color: #344139;
+}
+
+.predictionTableHeader {
+  display: grid;
+  grid-template-columns: 1fr 90px 70px;
+  gap: 12px;
+
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+
+  color: #647067;
+  font-weight: 800;
+
+  margin-bottom: 8px;
+}
+.publicPredictionRow:first-of-type {
+  border-top: 0;
+}
+
+.championLocked {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 16px;
+  text-align: center;
+  font-weight: 900;
+  background: #f0eee9;
+  color: #887967;
+}
+
+.championSavedButton {
+  width: 100%;
+  min-height: 60px;
+
+  border: 0;
+  border-radius: 999px;
+
+  background: #e8f7dd;
+  color: #16361f;
+
+  font-weight: 900;
+  font-size: 17px;
+
+  cursor: pointer;
+}
+
+.leaderboardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.leaderboardHeader h2 {
+  margin: 0;
+}
+
+.leaderboardSummary {
+  color: #647067;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.championActions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.championActions .primary,
+.championActions .danger {
+  flex: 2;
 }
