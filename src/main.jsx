@@ -329,7 +329,7 @@ function PendingApproval() {
         </p>
 
         <p className="muted">
-          Please pay the <b>$50 entry fee</b>. After payment, an admin will approve your account and you can access the prediction portal.
+          Please wait, admin will approve your account and you can access the prediction portal.
         </p>
 
         <button className="primary" onClick={() => signOut(auth)}>
