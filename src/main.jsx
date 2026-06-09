@@ -1744,6 +1744,9 @@ function AdminResult({ match, displayNumber }) {
   const [awayGoals, setAwayGoals] = useState(match.awayGoals ?? "");
   const [saved, setSaved] = useState("");
   const [busy, setBusy] = useState(false);
+  const [emailSent, setEmailSent] = useState(
+    Boolean(match.predictionEmailSent),
+  );
 
   const lockTime =
     new Date(match.kickoff).getTime() - LOCK_MINUTES_BEFORE_KICKOFF * 60 * 1000;
@@ -1756,6 +1759,7 @@ function AdminResult({ match, displayNumber }) {
     setKickoff(toLocalInputValue(match.kickoff));
     setHomeGoals(match.homeGoals ?? "");
     setAwayGoals(match.awayGoals ?? "");
+    setEmailSent(Boolean(match.predictionEmailSent));
   }, [match]);
 
   async function saveMatchDetails() {
@@ -2011,6 +2015,12 @@ function AdminResult({ match, displayNumber }) {
         },
       );
 
+      await updateDoc(doc(db, "matches", match.id), {
+        predictionEmailSent: true,
+        predictionEmailSentAt: serverTimestamp(),
+      });
+
+      setEmailSent(true);
       setSaved("Email sent Successfully");
       setTimeout(() => setSaved(""), 2500);
     } catch (error) {
@@ -2093,7 +2103,7 @@ function AdminResult({ match, displayNumber }) {
                 onClick={sendEmailNotification}
                 disabled={busy}
               >
-                📧 Send Email
+                {emailSent ? "Email Sent" : "📧 Send Email"}
               </button>
             )}
 
