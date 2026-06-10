@@ -1350,7 +1350,7 @@ function UserApprovals({ users }) {
 
   return (
     <article className="card">
-      <h2>👥 Users</h2>
+      {/* <h2>👥 Users</h2> */}
 
       <nav className="userSubTabs">
         <button
