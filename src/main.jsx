@@ -634,9 +634,12 @@ function PublicPredictions({ matches, users }) {
               {Object.entries(groupedMatches).map(([round, list]) => (
                 <optgroup key={round} label={round}>
                   {list.map((match) => (
+                    // <option key={match.id} value={match.id}>
+                    //   {match.homeTeam} vs {match.awayTeam} —{" "}
+                    //   {formatCentralDateTime(match.kickoff)} CT
+                    // </option>
                     <option key={match.id} value={match.id}>
-                      {match.homeTeam} vs {match.awayTeam} —{" "}
-                      {formatCentralDateTime(match.kickoff)} CT
+                      {match.homeTeam} vs {match.awayTeam}
                     </option>
                   ))}
                 </optgroup>
@@ -1216,13 +1219,13 @@ function Rules() {
           <p>All match times are displayed in Central Time (CT).</p>
         </div>
 
-        <div className="ruleItem">
+        {/* <div className="ruleItem">
           <strong>📊 Leaderboard Ranking</strong>
           <p>
             Players are ranked by total points. Exact score count is used as a
             tiebreaker.
           </p>
-        </div>
+        </div> */}
 
         <div className="ruleItem">
           <strong>💰 Entry Fee & Prize Pool</strong>
