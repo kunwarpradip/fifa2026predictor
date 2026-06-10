@@ -99,6 +99,45 @@ function getFriendlyAuthError(error) {
   return "Google sign-in could not finish. Please open the app directly in Safari or Chrome and try again.";
 }
 
+function isPermissionDenied(error) {
+  return `${error?.code || ""} ${error?.message || ""}`
+    .toLowerCase()
+    .includes("permission");
+}
+
+function getNewUserProfile(user, includeApprovalStatus = true) {
+  const profile = {
+    name: user.displayName || "",
+    place: "",
+    photoURL: user.photoURL || "",
+    email: user.email || "",
+    totalPoints: 0,
+    exactScores: 0,
+    paymentStatus: PAYMENT_STATUS_UNPAID,
+    entryFeePaid: false,
+    createdAt: serverTimestamp(),
+  };
+
+  if (includeApprovalStatus) {
+    profile.approved = false;
+  }
+
+  return profile;
+}
+
+async function createNewUserProfile(userRef, user) {
+  try {
+    await setDoc(userRef, getNewUserProfile(user));
+  } catch (error) {
+    if (!isPermissionDenied(error)) {
+      throw error;
+    }
+
+    // Keeps sign-in working even if Firestore rules have not been deployed yet.
+    await setDoc(userRef, getNewUserProfile(user, false));
+  }
+}
+
 function formatCentralDate(iso) {
   if (!iso) return "Date not set";
 
@@ -154,6 +193,7 @@ function App() {
   const [worldCupSettings, setWorldCupSettings] = useState(null);
   const [authUser, setAuthUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
+  const [redirectReady, setRedirectReady] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [profile, setProfile] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -163,11 +203,22 @@ function App() {
   const [tab, setTab] = useState("matches");
 
   useEffect(() => {
+    let isMounted = true;
+
     authPersistenceReady
       .then(() => getRedirectResult(auth))
       .catch((error) => {
         setLoginError(getFriendlyAuthError(error));
+      })
+      .finally(() => {
+        if (isMounted) {
+          setRedirectReady(true);
+        }
       });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -186,24 +237,13 @@ function App() {
         const userSnap = await getDoc(userRef);
 
         if (!userSnap.exists()) {
-          await setDoc(userRef, {
-            name: user.displayName || "",
-            place: "",
-            photoURL: user.photoURL || "",
-            email: user.email || "",
-            totalPoints: 0,
-            exactScores: 0,
-            approved: false,
-            paymentStatus: PAYMENT_STATUS_UNPAID,
-            entryFeePaid: false,
-            createdAt: serverTimestamp(),
-          });
+          await createNewUserProfile(userRef, user);
         }
 
         const adminSnap = await getDoc(doc(db, "admins", user.uid));
         setIsAdmin(adminSnap.exists());
       } catch (error) {
-        console.log(error);
+        console.error(error);
         setLoginError(
           "Google sign-in worked, but your profile could not be loaded. Please try again.",
         );
@@ -273,7 +313,7 @@ function App() {
       );
   }, [users]);
 
-  if (!authReady) {
+  if (!authReady || !redirectReady) {
     return (
       <main className="app">
         <section className="card">
