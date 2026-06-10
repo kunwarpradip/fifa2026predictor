@@ -103,6 +103,11 @@ h2 {
   font-size: 17px;
 }
 
+.primary:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
 .secondary {
   padding: 14px 18px;
   min-height: 52px;
@@ -120,6 +125,38 @@ h2 {
   height: 48px;
   background: rgba(255, 255, 255, 0.85);
   font-size: 22px;
+}
+
+.loginNotice {
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid #f1ce66;
+  border-radius: 18px;
+  background: #fff8dc;
+  color: #5d4210;
+}
+
+.loginNotice strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #3f2d0b;
+}
+
+.loginNotice p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.loginCopyButton {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.loginCopyStatus {
+  margin-top: 10px !important;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  font-weight: 800;
 }
 
 .app {

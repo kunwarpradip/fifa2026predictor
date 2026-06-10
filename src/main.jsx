@@ -1,6 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import {
+  getRedirectResult,
+  signInWithPopup,
+  signInWithRedirect,
+  signOut,
+  onAuthStateChanged,
+} from "firebase/auth";
 import {
   collection,
   doc,
@@ -39,6 +45,54 @@ const PAYMENT_STATUS_UNPAID = "unpaid";
 
 function hasPendingEntryFee(user) {
   return user?.approved === true && user?.paymentStatus !== PAYMENT_STATUS_PAID;
+}
+
+function canUseSessionStorage() {
+  try {
+    const key = "__wc_predictor_auth_test__";
+    window.sessionStorage.setItem(key, key);
+    window.sessionStorage.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isLikelyEmbeddedBrowser() {
+  const userAgent = navigator.userAgent || "";
+
+  return /FBAN|FBAV|Instagram|Line\/|LinkedInApp|Messenger|Twitter|MicroMessenger|wv\)/i.test(
+    userAgent,
+  );
+}
+
+function isMobileBrowser() {
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+}
+
+function getFriendlyAuthError(error) {
+  const text = `${error?.code || ""} ${error?.message || ""}`.toLowerCase();
+
+  if (
+    text.includes("missing-initial-state") ||
+    text.includes("missing initial state") ||
+    text.includes("storage")
+  ) {
+    return "Your browser blocked the temporary sign-in storage Firebase needs. Open the app directly in Safari or Chrome, then try again.";
+  }
+
+  if (text.includes("popup-closed-by-user")) {
+    return "The Google sign-in window was closed before login finished.";
+  }
+
+  if (
+    text.includes("popup-blocked") ||
+    text.includes("operation-not-supported")
+  ) {
+    return "Your browser blocked the Google sign-in popup. Open the app directly in Safari or Chrome, then try again.";
+  }
+
+  return "Google sign-in could not finish. Please open the app directly in Safari or Chrome and try again.";
 }
 
 function formatCentralDate(iso) {
@@ -362,6 +416,85 @@ function PaymentPendingBanner() {
 }
 
 function Login() {
+  const [authError, setAuthError] = useState("");
+  const [isSigningIn, setIsSigningIn] = useState(false);
+  const [needsBrowserOpen, setNeedsBrowserOpen] = useState(false);
+  const [copyStatus, setCopyStatus] = useState("");
+
+  useEffect(() => {
+    setNeedsBrowserOpen(isLikelyEmbeddedBrowser());
+
+    getRedirectResult(auth).catch((error) => {
+      setAuthError(getFriendlyAuthError(error));
+      setNeedsBrowserOpen(true);
+    });
+  }, []);
+
+  async function copyAppLink() {
+    const appLink = window.location.href;
+
+    try {
+      await navigator.clipboard.writeText(appLink);
+      setCopyStatus("Link copied");
+    } catch {
+      setCopyStatus(appLink);
+    }
+  }
+
+  async function continueWithGoogle() {
+    setAuthError("");
+    setCopyStatus("");
+
+    if (!canUseSessionStorage()) {
+      setNeedsBrowserOpen(true);
+      setAuthError(
+        "This browser is blocking the storage Google sign-in needs. Open the app directly in Safari or Chrome, then try again.",
+      );
+      return;
+    }
+
+    if (isLikelyEmbeddedBrowser()) {
+      setNeedsBrowserOpen(true);
+      setAuthError(
+        "This in-app browser can break Google sign-in. Open the app directly in Safari or Chrome, then try again.",
+      );
+      return;
+    }
+
+    setIsSigningIn(true);
+
+    try {
+      if (isMobileBrowser()) {
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
+
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      const text = `${error?.code || ""} ${error?.message || ""}`.toLowerCase();
+
+      if (
+        !isMobileBrowser() &&
+        canUseSessionStorage() &&
+        (text.includes("popup-blocked") ||
+          text.includes("operation-not-supported"))
+      ) {
+        try {
+          await signInWithRedirect(auth, googleProvider);
+        } catch (redirectError) {
+          setAuthError(getFriendlyAuthError(redirectError));
+          setNeedsBrowserOpen(true);
+        }
+        return;
+      }
+
+      setAuthError(getFriendlyAuthError(error));
+      setNeedsBrowserOpen(true);
+    } finally {
+      setIsSigningIn(false);
+    }
+  }
+
   return (
     <main className="login">
       <section className="loginCard">
@@ -376,11 +509,28 @@ function Login() {
           long-lasting, low-friction experience.
         </p>
 
+        {(authError || needsBrowserOpen) && (
+          <div className="loginNotice" role="alert">
+            <strong>Having trouble signing in?</strong>
+            <p>
+              {authError ||
+                "Open this app directly in Safari or Chrome before signing in."}
+            </p>
+
+            <button className="secondary loginCopyButton" onClick={copyAppLink}>
+              Copy app link
+            </button>
+
+            {copyStatus && <p className="loginCopyStatus">{copyStatus}</p>}
+          </div>
+        )}
+
         <button
           className="primary"
-          onClick={() => signInWithPopup(auth, googleProvider)}
+          onClick={continueWithGoogle}
+          disabled={isSigningIn}
         >
-          Continue with Google
+          {isSigningIn ? "Opening Google..." : "Continue with Google"}
         </button>
       </section>
     </main>
