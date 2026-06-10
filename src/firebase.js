@@ -4,6 +4,8 @@ import {
   GoogleAuthProvider,
   setPersistence,
   browserLocalPersistence,
+  browserSessionPersistence,
+  inMemoryPersistence,
 } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
@@ -22,4 +24,6 @@ export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
 
 googleProvider.setCustomParameters({ prompt: "select_account" });
-setPersistence(auth, browserLocalPersistence);
+export const authPersistenceReady = setPersistence(auth, browserLocalPersistence)
+  .catch(() => setPersistence(auth, browserSessionPersistence))
+  .catch(() => setPersistence(auth, inMemoryPersistence));
