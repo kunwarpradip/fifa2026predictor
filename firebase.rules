@@ -12,12 +12,14 @@ service cloud.firestore {
         "email",
         "totalPoints",
         "exactScores",
+        "approved",
         "paymentStatus",
         "entryFeePaid",
         "createdAt"
       ])
       && request.resource.data.totalPoints == 0
       && request.resource.data.exactScores == 0
+      && request.resource.data.approved == false
       && request.resource.data.paymentStatus == "unpaid"
       && request.resource.data.entryFeePaid == false;
     }

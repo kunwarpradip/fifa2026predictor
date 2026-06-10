@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import {
   getRedirectResult,
   signInWithPopup,
+  signInWithRedirect,
   signOut,
   onAuthStateChanged,
 } from "firebase/auth";
@@ -65,7 +66,12 @@ function isLikelyEmbeddedBrowser() {
 }
 
 function isMobileBrowser() {
-  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+  const userAgent = navigator.userAgent || "";
+
+  return (
+    /Android|iPhone|iPad|iPod/i.test(userAgent) ||
+    (/Macintosh/i.test(userAgent) && navigator.maxTouchPoints > 1)
+  );
 }
 
 function getFriendlyAuthError(error) {
@@ -157,9 +163,11 @@ function App() {
   const [tab, setTab] = useState("matches");
 
   useEffect(() => {
-    getRedirectResult(auth).catch((error) => {
-      setLoginError(getFriendlyAuthError(error));
-    });
+    authPersistenceReady
+      .then(() => getRedirectResult(auth))
+      .catch((error) => {
+        setLoginError(getFriendlyAuthError(error));
+      });
   }, []);
 
   useEffect(() => {
@@ -185,6 +193,7 @@ function App() {
             email: user.email || "",
             totalPoints: 0,
             exactScores: 0,
+            approved: false,
             paymentStatus: PAYMENT_STATUS_UNPAID,
             entryFeePaid: false,
             createdAt: serverTimestamp(),
@@ -485,6 +494,12 @@ function Login({ initialError = "" }) {
 
     try {
       await authPersistenceReady;
+
+      if (isMobileBrowser()) {
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
+
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
       setAuthError(getFriendlyAuthError(error));
