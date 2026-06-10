@@ -15,12 +15,21 @@ import {
   orderBy,
   where,
   writeBatch,
+  runTransaction,
 } from "firebase/firestore";
 import { auth, db, googleProvider } from "./firebase";
 import { scorePrediction } from "./scoring";
 import "./styles.css";
 import { flagUrl } from "./teamFlags";
 import emailjs from "@emailjs/browser";
+import {
+  Eye,
+  Medal,
+  ScrollText,
+  ShieldCheck,
+  Trophy,
+  UserCircle,
+} from "lucide-react";
 
 const TIME_ZONE = "America/Chicago";
 const TIME_ZONE_LABEL = "CT";
@@ -209,7 +218,7 @@ function App() {
           <h1>Predict & climb</h1>
 
           <p className="timezone">
-            🕒 All match times are displayed in Central Time ({TIME_ZONE_LABEL}
+            All match times are displayed in Central Time ({TIME_ZONE_LABEL}
             ). Predictions lock at kickoff.
           </p>
         </div>
@@ -232,35 +241,40 @@ function App() {
           className={tab === "matches" ? "active" : ""}
           onClick={() => setTab("matches")}
         >
-          🏆 Matches
+          <Trophy className="tabIcon tabIconMatches" aria-hidden="true" />
+          Matches
         </button>
 
         <button
           className={tab === "predictions" ? "active" : ""}
           onClick={() => setTab("predictions")}
         >
-          👀 Picks
+          <Eye className="tabIcon tabIconPicks" aria-hidden="true" />
+          Picks
         </button>
 
         <button
           className={tab === "leaderboard" ? "active" : ""}
           onClick={() => setTab("leaderboard")}
         >
-          🥇 Board
+          <Medal className="tabIcon tabIconBoard" aria-hidden="true" />
+          Board
         </button>
 
         <button
           className={tab === "rules" ? "active" : ""}
           onClick={() => setTab("rules")}
         >
-          📜 Rules
+          <ScrollText className="tabIcon tabIconRules" aria-hidden="true" />
+          Rules
         </button>
 
         <button
           className={tab === "profile" ? "active" : ""}
           onClick={() => setTab("profile")}
         >
-          👤 Profile
+          <UserCircle className="tabIcon tabIconProfile" aria-hidden="true" />
+          Profile
         </button>
 
         {isAdmin && (
@@ -268,7 +282,8 @@ function App() {
             className={tab === "admin" ? "active" : ""}
             onClick={() => setTab("admin")}
           >
-            🛡 Admin
+            <ShieldCheck className="tabIcon tabIconAdmin" aria-hidden="true" />
+            Admin
           </button>
         )}
       </nav>

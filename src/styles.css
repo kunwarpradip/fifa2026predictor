@@ -262,6 +262,37 @@ h2 {
   font-weight: 800;
 }
 
+.tabIcon {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  stroke-width: 2.7;
+}
+
+.tabIconMatches {
+  color: #16a34a;
+}
+
+.tabIconPicks {
+  color: #2563eb;
+}
+
+.tabIconBoard {
+  color: #d97706;
+}
+
+.tabIconRules {
+  color: #7c3aed;
+}
+
+.tabIconProfile {
+  color: #0891b2;
+}
+
+.tabIconAdmin {
+  color: #dc2626;
+}
+
 .tabs button.active {
   background: #102018;
   color: #fff;
@@ -973,9 +1004,9 @@ body {
 .championPredictionHeader,
 .championPredictionRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(145px, 1.1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
-  align-items: center;
+  align-items: space-between;
 }
 
 .championPredictionHeader {
