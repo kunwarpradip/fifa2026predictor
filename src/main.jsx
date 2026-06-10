@@ -1,12 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import {
-  getRedirectResult,
-  signInWithPopup,
-  signInWithRedirect,
-  signOut,
-  onAuthStateChanged,
-} from "firebase/auth";
+import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import {
   collection,
   doc,
@@ -21,8 +15,9 @@ import {
   orderBy,
   where,
   writeBatch,
+  runTransaction,
 } from "firebase/firestore";
-import { auth, authPersistenceReady, db, googleProvider } from "./firebase";
+import { auth, db, googleProvider } from "./firebase";
 import { scorePrediction } from "./scoring";
 import "./styles.css";
 import { flagUrl } from "./teamFlags";
@@ -44,98 +39,6 @@ const PAYMENT_STATUS_UNPAID = "unpaid";
 
 function hasPendingEntryFee(user) {
   return user?.approved === true && user?.paymentStatus !== PAYMENT_STATUS_PAID;
-}
-
-function canUseSessionStorage() {
-  try {
-    const key = "__wc_predictor_auth_test__";
-    window.sessionStorage.setItem(key, key);
-    window.sessionStorage.removeItem(key);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isLikelyEmbeddedBrowser() {
-  const userAgent = navigator.userAgent || "";
-
-  return /FBAN|FBAV|Instagram|Line\/|LinkedInApp|Messenger|Twitter|MicroMessenger|wv\)/i.test(
-    userAgent,
-  );
-}
-
-function isMobileBrowser() {
-  const userAgent = navigator.userAgent || "";
-
-  return (
-    /Android|iPhone|iPad|iPod/i.test(userAgent) ||
-    (/Macintosh/i.test(userAgent) && navigator.maxTouchPoints > 1)
-  );
-}
-
-function getFriendlyAuthError(error) {
-  const text = `${error?.code || ""} ${error?.message || ""}`.toLowerCase();
-
-  if (
-    text.includes("missing-initial-state") ||
-    text.includes("missing initial state") ||
-    text.includes("storage")
-  ) {
-    return "Your browser blocked the temporary sign-in storage Firebase needs. Open the app directly in Safari or Chrome, then try again.";
-  }
-
-  if (text.includes("popup-closed-by-user")) {
-    return "The Google sign-in window was closed before login finished.";
-  }
-
-  if (
-    text.includes("popup-blocked") ||
-    text.includes("operation-not-supported")
-  ) {
-    return "Your browser blocked the Google sign-in popup. Open the app directly in Safari or Chrome, then try again.";
-  }
-
-  return "Google sign-in could not finish. Please open the app directly in Safari or Chrome and try again.";
-}
-
-function isPermissionDenied(error) {
-  return `${error?.code || ""} ${error?.message || ""}`
-    .toLowerCase()
-    .includes("permission");
-}
-
-function getNewUserProfile(user, includeApprovalStatus = true) {
-  const profile = {
-    name: user.displayName || "",
-    place: "",
-    photoURL: user.photoURL || "",
-    email: user.email || "",
-    totalPoints: 0,
-    exactScores: 0,
-    paymentStatus: PAYMENT_STATUS_UNPAID,
-    entryFeePaid: false,
-    createdAt: serverTimestamp(),
-  };
-
-  if (includeApprovalStatus) {
-    profile.approved = false;
-  }
-
-  return profile;
-}
-
-async function createNewUserProfile(userRef, user) {
-  try {
-    await setDoc(userRef, getNewUserProfile(user));
-  } catch (error) {
-    if (!isPermissionDenied(error)) {
-      throw error;
-    }
-
-    // Keeps sign-in working even if Firestore rules have not been deployed yet.
-    await setDoc(userRef, getNewUserProfile(user, false));
-  }
 }
 
 function formatCentralDate(iso) {
@@ -192,9 +95,6 @@ function formatCountdown(ms) {
 function App() {
   const [worldCupSettings, setWorldCupSettings] = useState(null);
   const [authUser, setAuthUser] = useState(null);
-  const [authReady, setAuthReady] = useState(false);
-  const [redirectReady, setRedirectReady] = useState(false);
-  const [loginError, setLoginError] = useState("");
   const [profile, setProfile] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [matches, setMatches] = useState([]);
@@ -203,54 +103,35 @@ function App() {
   const [tab, setTab] = useState("matches");
 
   useEffect(() => {
-    let isMounted = true;
-
-    authPersistenceReady
-      .then(() => getRedirectResult(auth))
-      .catch((error) => {
-        setLoginError(getFriendlyAuthError(error));
-      })
-      .finally(() => {
-        if (isMounted) {
-          setRedirectReady(true);
-        }
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
     return onAuthStateChanged(auth, async (user) => {
-      try {
-        setAuthUser(user);
+      setAuthUser(user);
 
-        if (!user) {
-          setProfile(null);
-          setIsAdmin(false);
-          setMyPredictions([]);
-          return;
-        }
-
-        const userRef = doc(db, "users", user.uid);
-        const userSnap = await getDoc(userRef);
-
-        if (!userSnap.exists()) {
-          await createNewUserProfile(userRef, user);
-        }
-
-        const adminSnap = await getDoc(doc(db, "admins", user.uid));
-        setIsAdmin(adminSnap.exists());
-      } catch (error) {
-        console.error(error);
-        setLoginError(
-          "Google sign-in worked, but your profile could not be loaded. Please try again.",
-        );
-        setAuthUser(null);
-      } finally {
-        setAuthReady(true);
+      if (!user) {
+        setProfile(null);
+        setIsAdmin(false);
+        setMyPredictions([]);
+        return;
       }
+
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
+
+      if (!userSnap.exists()) {
+        await setDoc(userRef, {
+          name: user.displayName || "",
+          place: "",
+          photoURL: user.photoURL || "",
+          email: user.email || "",
+          totalPoints: 0,
+          exactScores: 0,
+          paymentStatus: PAYMENT_STATUS_UNPAID,
+          entryFeePaid: false,
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      const adminSnap = await getDoc(doc(db, "admins", user.uid));
+      setIsAdmin(adminSnap.exists());
     });
   }, []);
 
@@ -313,17 +194,7 @@ function App() {
       );
   }, [users]);
 
-  if (!authReady || !redirectReady) {
-    return (
-      <main className="app">
-        <section className="card">
-          <h2>Checking sign-in...</h2>
-        </section>
-      </main>
-    );
-  }
-
-  if (!authUser) return <Login initialError={loginError} />;
+  if (!authUser) return <Login />;
 
   if (!profile) {
     return (
@@ -490,65 +361,7 @@ function PaymentPendingBanner() {
   );
 }
 
-function Login({ initialError = "" }) {
-  const [authError, setAuthError] = useState(initialError);
-  const [isSigningIn, setIsSigningIn] = useState(false);
-  const [needsBrowserOpen, setNeedsBrowserOpen] = useState(false);
-  const [copyStatus, setCopyStatus] = useState("");
-
-  useEffect(() => {
-    setNeedsBrowserOpen(isLikelyEmbeddedBrowser());
-  }, []);
-
-  useEffect(() => {
-    if (initialError) {
-      setAuthError(initialError);
-      setNeedsBrowserOpen(true);
-    }
-  }, [initialError]);
-
-  async function copyAppLink() {
-    const appLink = window.location.href;
-
-    try {
-      await navigator.clipboard.writeText(appLink);
-      setCopyStatus("Link copied");
-    } catch {
-      setCopyStatus(appLink);
-    }
-  }
-
-  async function continueWithGoogle() {
-    setAuthError("");
-    setCopyStatus("");
-
-    if (isLikelyEmbeddedBrowser()) {
-      setNeedsBrowserOpen(true);
-      setAuthError(
-        "This in-app browser can break Google sign-in. Open the app directly in Safari or Chrome, then try again.",
-      );
-      return;
-    }
-
-    setIsSigningIn(true);
-
-    try {
-      await authPersistenceReady;
-
-      if (isMobileBrowser()) {
-        await signInWithRedirect(auth, googleProvider);
-        return;
-      }
-
-      await signInWithPopup(auth, googleProvider);
-    } catch (error) {
-      setAuthError(getFriendlyAuthError(error));
-      setNeedsBrowserOpen(isMobileBrowser() || !canUseSessionStorage());
-    } finally {
-      setIsSigningIn(false);
-    }
-  }
-
+function Login() {
   return (
     <main className="login">
       <section className="loginCard">
@@ -563,28 +376,11 @@ function Login({ initialError = "" }) {
           long-lasting, low-friction experience.
         </p>
 
-        {(authError || needsBrowserOpen) && (
-          <div className="loginNotice" role="alert">
-            <strong>Having trouble signing in?</strong>
-            <p>
-              {authError ||
-                "Open this app directly in Safari or Chrome before signing in."}
-            </p>
-
-            <button className="secondary loginCopyButton" onClick={copyAppLink}>
-              Copy app link
-            </button>
-
-            {copyStatus && <p className="loginCopyStatus">{copyStatus}</p>}
-          </div>
-        )}
-
         <button
           className="primary"
-          onClick={continueWithGoogle}
-          disabled={isSigningIn}
+          onClick={() => signInWithPopup(auth, googleProvider)}
         >
-          {isSigningIn ? "Opening Google..." : "Continue with Google"}
+          Continue with Google
         </button>
       </section>
     </main>
