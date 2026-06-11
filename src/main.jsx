@@ -1129,31 +1129,35 @@ function Leaderboard({ rows }) {
 
       {rows.map((row, index) => (
         <div className="rank" key={row.id}>
-          <img
-            src={
-              row.photoURL ||
-              "https://ui-avatars.com/api/?name=" +
-                encodeURIComponent(row.name || "Player")
-            }
-            alt={row.name || "Player"}
-            className="leaderboardAvatar"
-          />
+          <div className="leaderboardAvatarWrap">
+            <img
+              src={
+                row.photoURL ||
+                "https://ui-avatars.com/api/?name=" +
+                  encodeURIComponent(row.name || "Player")
+              }
+              alt={row.name || "Player"}
+              className="leaderboardAvatar"
+            />
+
+            {row.paymentStatus === PAYMENT_STATUS_PAID && (
+              <span
+                className="paidAvatarMarker"
+                title="Entry fee paid"
+                aria-label="Entry fee paid"
+              >
+                ✓
+              </span>
+            )}
+          </div>
 
           <div>
-            <strong>
-              <span>#{index + 1} {row.name || "Player"}</span>
-              {row.paymentStatus === PAYMENT_STATUS_PAID && (
-                <span
-                  className="paidLeaderboardMarker"
-                  title="Entry fee paid"
-                  aria-label="Entry fee paid"
-                >
-                  $
-                </span>
-              )}
-            </strong>
+            <strong>#{index + 1} {row.name || "Player"}</strong>
             <p>
               {row.place || "No place"} · {row.exact} exact scores
+              {row.paymentStatus === PAYMENT_STATUS_PAID && (
+                <span className="paidTextMarker"> · Paid</span>
+              )}
             </p>
           </div>
 

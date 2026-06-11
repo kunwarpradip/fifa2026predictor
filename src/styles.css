@@ -630,28 +630,34 @@ label {
   font-size: 15px;
 }
 
-.rank strong {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+.leaderboardAvatarWrap {
+  position: relative;
+  width: 52px;
+  height: 52px;
 }
 
-.paidLeaderboardMarker {
+.paidAvatarMarker {
+  position: absolute;
+  top: -6px;
+  right: -6px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 22px;
   height: 22px;
-  flex: 0 0 22px;
   border-radius: 50%;
   background: #16883f;
   color: #ffffff;
-  border: 2px solid #bcebc6;
+  border: 2px solid #ffffff;
   font-size: 13px;
   font-weight: 950;
   line-height: 1;
   box-shadow: 0 2px 8px rgba(22, 136, 63, 0.22);
+}
+
+.paidTextMarker {
+  color: #16883f;
+  font-weight: 900;
 }
 
 .rank b {
