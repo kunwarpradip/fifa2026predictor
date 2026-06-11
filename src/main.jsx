@@ -1141,7 +1141,16 @@ function Leaderboard({ rows }) {
 
           <div>
             <strong>
-              #{index + 1} {row.name || "Player"}
+              <span>#{index + 1} {row.name || "Player"}</span>
+              {row.paymentStatus === PAYMENT_STATUS_PAID && (
+                <span
+                  className="paidLeaderboardMarker"
+                  title="Entry fee paid"
+                  aria-label="Entry fee paid"
+                >
+                  $
+                </span>
+              )}
             </strong>
             <p>
               {row.place || "No place"} · {row.exact} exact scores

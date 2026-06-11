@@ -630,6 +630,30 @@ label {
   font-size: 15px;
 }
 
+.rank strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.paidLeaderboardMarker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  border-radius: 50%;
+  background: #16883f;
+  color: #ffffff;
+  border: 2px solid #bcebc6;
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1;
+  box-shadow: 0 2px 8px rgba(22, 136, 63, 0.22);
+}
+
 .rank b {
   font-size: 18px;
 }
