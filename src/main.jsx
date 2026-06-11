@@ -1939,8 +1939,10 @@ function AdminResult({ match, displayNumber }) {
 
       const approvedUsers = allUsers
         .filter((user) => user.approved === true)
-        .sort((a, b) =>
-          (a.name || a.email || "").localeCompare(b.name || b.email || ""),
+        .sort(
+          (a, b) =>
+            Number(b.totalPoints || 0) - Number(a.totalPoints || 0) ||
+            (a.name || a.email || "").localeCompare(b.name || b.email || ""),
         );
 
       if (approvedUsers.length === 0) {
@@ -1964,6 +1966,8 @@ function AdminResult({ match, displayNumber }) {
 
         return {
           playerName: user.name || user.email || "Anonymous",
+          totalPoints: Number(user.totalPoints || 0),
+          exactScores: Number(user.exactScores || 0),
           hasPrediction: Boolean(prediction),
           homeGoals: prediction?.homeGoals,
           awayGoals: prediction?.awayGoals,
@@ -2003,6 +2007,7 @@ function AdminResult({ match, displayNumber }) {
   <thead>
     <tr style="background-color:#1e3a8a; color:white;">
       <th style="padding:10px; border:1px solid #ddd;">Player</th>
+      <th style="padding:10px; border:1px solid #ddd;">Leaderboard Score</th>
       <th style="padding:10px; border:1px solid #ddd;">Prediction</th>
     </tr>
   </thead>
@@ -2013,6 +2018,11 @@ function AdminResult({ match, displayNumber }) {
         <tr style="background-color:${index % 2 === 0 ? "#f8fafc" : "#ffffff"};">
           <td style="padding:8px; border:1px solid #ddd;">
             ${escapeEmailHtml(p.playerName)}
+          </td>
+          <td style="padding:8px; border:1px solid #ddd; text-align:center; white-space:nowrap;">
+            <strong>${escapeEmailHtml(p.totalPoints)} pts</strong>
+            <br />
+            <span style="color:#64748b; font-size:12px;">${escapeEmailHtml(p.exactScores)} exact</span>
           </td>
           <td style="padding:8px; border:1px solid #ddd;">
             ${
