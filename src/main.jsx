@@ -1553,6 +1553,7 @@ function UserPayments({ users }) {
 
 function Admin({ matches, users, worldCupSettings }) {
   const [adminTab, setAdminTab] = useState("create");
+  const [resultMatchTab, setResultMatchTab] = useState("upcoming");
   const nextMatchNumber = matches.length + 1;
   const [search, setSearch] = useState("");
   const [match, setMatch] = useState({
@@ -1611,6 +1612,19 @@ function Admin({ matches, users, worldCupSettings }) {
       `${match.homeTeam} ${match.awayTeam} ${match.round}`.toLowerCase();
     return text.includes(search.toLowerCase());
   });
+  const now = Date.now();
+  const upcomingResultMatches = filteredMatches.filter(
+    (match) => new Date(match.kickoff).getTime() >= now,
+  );
+  const previousResultMatches = filteredMatches
+    .filter((match) => new Date(match.kickoff).getTime() < now)
+    .slice()
+    .reverse();
+  const visibleResultMatches =
+    resultMatchTab === "upcoming"
+      ? upcomingResultMatches
+      : previousResultMatches;
+
   return (
     <section>
       <nav className="adminTabs">
@@ -1743,13 +1757,39 @@ function Admin({ matches, users, worldCupSettings }) {
           </article>
           <h2 className="day">Publish results</h2>
 
-          {filteredMatches.map((match, index) => (
+          <nav className="predictionSubTabs">
+            <button
+              className={resultMatchTab === "upcoming" ? "active" : ""}
+              onClick={() => setResultMatchTab("upcoming")}
+            >
+              Upcoming ({upcomingResultMatches.length})
+            </button>
+
+            <button
+              className={resultMatchTab === "previous" ? "active" : ""}
+              onClick={() => setResultMatchTab("previous")}
+            >
+              Previous ({previousResultMatches.length})
+            </button>
+          </nav>
+
+          {visibleResultMatches.map((match, index) => (
             <AdminResult
               key={match.id}
               match={match}
               displayNumber={index + 1}
             />
           ))}
+
+          {visibleResultMatches.length === 0 && (
+            <Empty
+              text={
+                resultMatchTab === "upcoming"
+                  ? "No upcoming matches found."
+                  : "No previous matches found."
+              }
+            />
+          )}
         </>
       )}
     </section>
