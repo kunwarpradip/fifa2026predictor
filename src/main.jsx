@@ -413,22 +413,38 @@ function PendingApproval() {
 }
 
 function Matches({ matches, predictions, uid, profile }) {
-  const grouped = matches.reduce((acc, match) => {
+  const [matchTab, setMatchTab] = useState("upcoming");
+  const [currentTime, setCurrentTime] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const now = currentTime;
+  const upcomingMatches = matches.filter(
+    (match) => new Date(match.kickoff).getTime() >= now,
+  );
+  const previousMatches = matches
+    .filter((match) => new Date(match.kickoff).getTime() < now)
+    .slice()
+    .reverse();
+
+  const visibleMatches =
+    matchTab === "upcoming" ? upcomingMatches : previousMatches;
+
+  const grouped = visibleMatches.reduce((acc, match) => {
     const day = formatCentralDate(match.kickoff);
     (acc[day] ||= []).push(match);
     return acc;
   }, {});
 
   const jumpToCurrentMatchDay = () => {
-    const now = Date.now();
-
-    const upcomingMatch =
-      matches.find((match) => new Date(match.kickoff).getTime() >= now) ||
-      matches[matches.length - 1];
+    const upcomingMatch = upcomingMatches[0];
 
     if (!upcomingMatch) return;
 
-    const dayId = `day-${formatCentralDate(upcomingMatch.kickoff)
+    const dayId = `upcoming-day-${formatCentralDate(upcomingMatch.kickoff)
       .replaceAll(" ", "-")
       .replaceAll(",", "")}`;
 
@@ -441,14 +457,33 @@ function Matches({ matches, predictions, uid, profile }) {
   return (
     <section>
       <ChampionPick matches={matches} uid={uid} profile={profile} />
-      {matches.length > 0 && (
+
+      <nav className="predictionSubTabs">
+        <button
+          className={matchTab === "upcoming" ? "active" : ""}
+          onClick={() => setMatchTab("upcoming")}
+        >
+          Upcoming ({upcomingMatches.length})
+        </button>
+
+        <button
+          className={matchTab === "previous" ? "active" : ""}
+          onClick={() => setMatchTab("previous")}
+        >
+          Previous ({previousMatches.length})
+        </button>
+      </nav>
+
+      {matchTab === "upcoming" && upcomingMatches.length > 0 && (
         <button className="jumpButton" onClick={jumpToCurrentMatchDay}>
           Next match ↓
         </button>
       )}
 
       {Object.entries(grouped).map(([day, list]) => {
-        const dayId = `day-${day.replaceAll(" ", "-").replaceAll(",", "")}`;
+        const dayId = `${matchTab}-day-${day
+          .replaceAll(" ", "-")
+          .replaceAll(",", "")}`;
 
         return (
           <div key={day} id={dayId}>
@@ -470,6 +505,16 @@ function Matches({ matches, predictions, uid, profile }) {
 
       {matches.length === 0 && (
         <Empty text="No matches yet. Ask an admin to add fixtures." />
+      )}
+
+      {matches.length > 0 && visibleMatches.length === 0 && (
+        <Empty
+          text={
+            matchTab === "upcoming"
+              ? "No upcoming matches."
+              : "No previous matches yet."
+          }
+        />
       )}
     </section>
   );
